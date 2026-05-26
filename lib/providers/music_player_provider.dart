@@ -2112,7 +2112,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       }
       final prewarmTargets = (rawQuery.isEmpty ? _onlineRecommendedSongs : _onlineSongs)
           .where((item) => item.isRemote)
-          .take(24)
+          .take(6)
           .toList(growable: false);
       for (final item in prewarmTargets) {
         unawaited(_prewarmMetrolistStream(item));
@@ -2264,7 +2264,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     // Wait only a tiny moment: when the stream is already cached this makes
     // playback start instantly; when it is cold we do not block the tap.
     final tapWarmup = _prewarmMetrolistStream(track);
-    await tapWarmup.timeout(const Duration(milliseconds: 450), onTimeout: () {});
+    await tapWarmup.timeout(const Duration(milliseconds: 1200), onTimeout: () {});
     if (selectionGeneration != _trackLoadGeneration || _currentTrack?.libraryKey != selectedLibraryKey) {
       return;
     }

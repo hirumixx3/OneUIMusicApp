@@ -20,6 +20,7 @@ import java.io.BufferedOutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
@@ -208,7 +209,8 @@ object MetrolistStreamResolver {
         val metrolistData = metrolistResult.getOrNull()
         if (metrolistData != null && metrolistData.streamUrl.isNotBlank()) {
             val transformed = prepareUrl(metrolistData.streamUrl)
-            if (transformed != null && isRangePlayable(transformed)) {
+            val metrolistClientName = metrolistData.clientName.ifBlank { "YTPlayerUtils.playerResponseForPlayback" }
+            if (transformed != null && isRangePlayable(transformed, metrolistClientName)) {
                 return NativePlayback(
                     url = transformed,
                     mimeType = metrolistData.format.mimeType.substringBefore(";"),
@@ -218,7 +220,7 @@ object MetrolistStreamResolver {
                     contentLength = metrolistData.format.contentLength,
                     durationMs = ((metrolistData.videoDetails?.lengthSeconds ?: "0").toLongOrNull() ?: 0L) * 1000L,
                     title = metrolistData.videoDetails?.title ?: "",
-                    source = "YTPlayerUtils.playerResponseForPlayback",
+                    source = metrolistClientName,
                 )
             } else if (transformed != null) {
                 Timber.tag(TAG).w("YTPlayerUtils returned a URL that failed byte validation for %s", videoId)
@@ -286,7 +288,7 @@ object MetrolistStreamResolver {
 
                 for (candidate in candidateUrls) {
                     val prepared = prepareUrl(candidate) ?: continue
-                    if (!isRangePlayable(prepared)) {
+                    if (!isRangePlayable(prepared, client.clientName)) {
                         Timber.tag(TAG).w("Skipping %s stream for %s because byte validation failed", client.clientName, videoId)
                         continue
                     }
@@ -309,7 +311,7 @@ object MetrolistStreamResolver {
         for ((itag, url) in streamInfoUrls) {
             if (!url.startsWith("http://") && !url.startsWith("https://")) continue
             val prepared = prepareUrl(url) ?: continue
-            if (!isRangePlayable(prepared)) continue
+            if (!isRangePlayable(prepared, "newpipe_streaminfo")) continue
             return NativePlayback(
                 url = prepared,
                 mimeType = "audio/webm",
@@ -326,24 +328,33 @@ object MetrolistStreamResolver {
         return null
     }
 
-    private fun isRangePlayable(url: String): Boolean {
-        return try {
-            val builder = Request.Builder()
-                .url(url)
-                .get()
-                .header("Range", "bytes=0-1")
-                .header("Accept-Encoding", "identity")
-                .header("Accept", "*/*")
-            YouTube.cookie?.let { builder.header("Cookie", it) }
-            httpClient.newCall(builder.build()).execute().use { response ->
-                val ok = response.code == 200 || response.code == 206
-                if (!ok) Timber.tag(TAG).w("Byte validation failed: HTTP %s", response.code)
-                ok
+    private fun isRangePlayable(url: String, source: String = ""): Boolean {
+        val probes = listOf(0L to 1L, 1_048_576L to 1_048_577L)
+        var firstProbeOk = false
+        for ((start, end) in probes) {
+            val ok = try {
+                val builder = Request.Builder()
+                    .url(url)
+                    .get()
+                    .header("Range", "bytes=$start-$end")
+                    .header("Accept-Encoding", "identity")
+                    .header("Accept", "*/*")
+                    .header("User-Agent", userAgentForSource(source))
+                YouTube.cookie?.let { builder.header("Cookie", it) }
+                httpClient.newCall(builder.build()).execute().use { response ->
+                    val success = response.code == 200 || response.code == 206
+                    if (start == 0L) firstProbeOk = success
+                    if (start > 0L && response.code == 416 && firstProbeOk) return true
+                    if (!success) Timber.tag(TAG).w("Byte validation failed at %s-%s: HTTP %s source=%s", start, end, response.code, source)
+                    success
+                }
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Byte validation exception at $start-$end source=$source")
+                false
             }
-        } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "Byte validation exception")
-            false
+            if (!ok) return false
         }
+        return true
     }
 
     private suspend fun prepareUrl(rawUrl: String): String? {
@@ -466,12 +477,16 @@ private object MetrolistNativeStreamServer {
                 forceRefresh = false,
             )
         } catch (e: Exception) {
-            try {
-                BufferedOutputStream(socket.getOutputStream()).use { output ->
-                    sendStatus(output, 500, "Stream Error")
-                }
-            } catch (_: Exception) {}
-            Timber.tag(TAG).e(e, "Client handler failed")
+            if (e is SocketException || e.cause is SocketException) {
+                Timber.tag(TAG).d("Client closed local stream connection: ${e.message}")
+            } else {
+                try {
+                    BufferedOutputStream(socket.getOutputStream()).use { output ->
+                        sendStatus(output, 500, "Stream Error")
+                    }
+                } catch (_: Exception) {}
+                Timber.tag(TAG).e(e, "Client handler failed")
+            }
         } finally {
             try { socket.close() } catch (_: Exception) {}
         }
