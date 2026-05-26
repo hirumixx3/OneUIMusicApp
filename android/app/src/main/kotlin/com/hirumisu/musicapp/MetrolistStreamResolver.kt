@@ -503,11 +503,16 @@ private object MetrolistNativeStreamServer {
                     val firstChunkEnd = parseContentRangeEnd(upstreamContentRange)
                         ?: firstContentLength?.let { upstreamStart + it - 1 }
                         ?: firstEnd
-                    val finalEnd = when {
+                    // If GoogleVideo does not expose the total file size in Content-Range,
+                    // do NOT stop after the first 512 KB chunk. That was the reason online
+                    // tracks played only part of the song and then jumped back/stalled at 0:00.
+                    // For unknown length we stream finite upstream chunks until GoogleVideo
+                    // returns 416, an empty body, or a short final chunk.
+                    val finalEnd: Long? = when {
                         requestedEnd != null && totalLength != null -> min(requestedEnd, totalLength - 1)
                         requestedEnd != null -> requestedEnd
                         totalLength != null -> totalLength - 1
-                        else -> firstChunkEnd
+                        else -> null
                     }
 
                     val outHeaders = linkedMapOf(
@@ -519,7 +524,7 @@ private object MetrolistNativeStreamServer {
                         "X-Metrolist-Itag" to playback.itag.toString(),
                     )
 
-                    if (hasRange) {
+                    if (hasRange && finalEnd != null) {
                         val totalPart = totalLength?.toString() ?: "*"
                         outHeaders["Content-Range"] = "bytes $safeStart-$finalEnd/$totalPart"
                         val responseLength = finalEnd - safeStart + 1
@@ -528,6 +533,9 @@ private object MetrolistNativeStreamServer {
                         }
                         writeHeaders(output, 206, "Partial Content", outHeaders)
                     } else {
+                        // Unknown length/open-ended request: use a plain streaming response.
+                        // Do not advertise a fake 512 KB Content-Length, otherwise ExoPlayer
+                        // treats that first chunk as the end of the whole track.
                         if (totalLength != null && totalLength >= 0) {
                             outHeaders["Content-Length"] = totalLength.toString()
                         }
@@ -544,8 +552,10 @@ private object MetrolistNativeStreamServer {
                         // continuous localhost stream to ExoPlayer, but upstream
                         // googlevideo is read in finite Metrolist-sized ranges.
                         var nextStart = firstChunkEnd + 1
-                        while (nextStart <= finalEnd) {
-                            val nextEnd = min(nextStart + CHUNK_LENGTH - 1, finalEnd)
+                        while (finalEnd == null || nextStart <= finalEnd) {
+                            val nextEnd = finalEnd?.let { min(nextStart + CHUNK_LENGTH - 1, it) }
+                                ?: (nextStart + CHUNK_LENGTH - 1)
+                            val expectedBytes = nextEnd - nextStart + 1
                             val nextOpened = openChunkWithRefresh(context, videoId, quality, playback, nextStart, nextEnd)
                             playback = nextOpened.first
                             val nextResponse = nextOpened.second
@@ -563,16 +573,20 @@ private object MetrolistNativeStreamServer {
                                 nextResponse.close()
                                 break
                             }
+                            var copiedBytes = 0L
                             nextResponse.use {
-                                bytesWritten += copyResponseBody(nextBody, output)
-                                val actualEnd = parseContentRangeEnd(nextResponse.header("Content-Range")) ?: nextEnd
+                                copiedBytes = copyResponseBody(nextBody, output)
+                                bytesWritten += copiedBytes
+                                val actualEnd = parseContentRangeEnd(nextResponse.header("Content-Range"))
+                                    ?: (nextStart + copiedBytes - 1)
                                 nextStart = actualEnd + 1
                             }
                             output.flush()
 
-                            // Unknown total length. If the upstream returned less than
-                            // the requested finite chunk, that was the tail of the file.
-                            if (totalLength == null && bytesWritten < (nextStart - safeStart)) break
+                            // Unknown total length: a short chunk means GoogleVideo sent
+                            // the tail of the file. Stop cleanly only after writing it.
+                            if (finalEnd == null && copiedBytes < expectedBytes) break
+                            if (copiedBytes <= 0L) break
                         }
                     }
                     output.flush()

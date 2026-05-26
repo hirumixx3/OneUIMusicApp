@@ -7,5 +7,3 @@ Projeto Flutter ajustado para estilo One UI com:
 - favoritos
 - tema claro/escuro
 - package `com.hirumisu.musicapp`
-# MusicApp2
-# MusicApp2
