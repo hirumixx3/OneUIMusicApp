@@ -2,6 +2,13 @@ name: Android Release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
 
 jobs:
   build-android:
@@ -11,26 +18,60 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v5.2.0
-        with:
-          distribution: temurin
-          java-version: "17"
+      - name: Use preinstalled Java 17
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "${JAVA_HOME_17_X64:-}" ] && [ -x "$JAVA_HOME_17_X64/bin/java" ]; then
+            JDK="$JAVA_HOME_17_X64"
+          elif [ -d "/usr/lib/jvm/temurin-17-jdk-amd64" ]; then
+            JDK="/usr/lib/jvm/temurin-17-jdk-amd64"
+          elif [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
+            JDK="/usr/lib/jvm/java-17-openjdk-amd64"
+          else
+            sudo apt-get update
+            sudo apt-get install -y openjdk-17-jdk
+            JDK="/usr/lib/jvm/java-17-openjdk-amd64"
+          fi
+
+          echo "JAVA_HOME=$JDK" >> "$GITHUB_ENV"
+          echo "$JDK/bin" >> "$GITHUB_PATH"
+          export JAVA_HOME="$JDK"
+          export PATH="$JDK/bin:$PATH"
+          java -version
 
       - name: Install Flutter
+        shell: bash
         run: |
-          git clone https://github.com/flutter/flutter.git --depth 1 -b stable $HOME/flutter
-          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          set -euo pipefail
+          git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
 
       - name: Check Flutter
         run: flutter --version
 
-      - name: Decode keystore
+      - name: Validate signing secrets
+        shell: bash
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
+          set -euo pipefail
+          test -n "${{ secrets.KEYSTORE_BASE64 }}" || { echo "Secret KEYSTORE_BASE64 não configurado."; exit 1; }
+          test -n "${{ secrets.KEYSTORE_PASSWORD }}" || { echo "Secret KEYSTORE_PASSWORD não configurado."; exit 1; }
+          test -n "${{ secrets.KEY_PASSWORD }}" || { echo "Secret KEY_PASSWORD não configurado."; exit 1; }
+          test -n "${{ secrets.KEY_ALIAS }}" || { echo "Secret KEY_ALIAS não configurado."; exit 1; }
+
+      - name: Decode keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android
+          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
+          test -s android/upload-keystore.jks
 
       - name: Create key.properties
+        shell: bash
         run: |
+          set -euo pipefail
           cat > android/key.properties <<EOF
           storePassword=${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
