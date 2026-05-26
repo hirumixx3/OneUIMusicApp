@@ -153,14 +153,30 @@ class CipherWebView private constructor(
         }
 
         val modifiedJs = if (exports.isNotEmpty()) {
-            val exportCode = "; " + exports.joinToString(" ")
-            val modified = playerJs.replace("})(_yt_player);", "$exportCode })(_yt_player);")
-            if (modified == playerJs) {
-                Timber.tag(TAG).w("Export injection point '})(_yt_player);' not found, appending exports")
+            val exportCode = "; " + exports.joinToString(" ") + " "
+            val markers = listOf(
+                "})(_yt_player);",
+                "})(yt);",
+                "})(this);",
+                "}).call(this);",
+                "})();",
+            )
+            var injected: String? = null
+            var usedMarker: String? = null
+            for (marker in markers) {
+                val idx = playerJs.lastIndexOf(marker)
+                if (idx >= 0) {
+                    injected = playerJs.substring(0, idx) + exportCode + playerJs.substring(idx)
+                    usedMarker = marker
+                    break
+                }
+            }
+            if (injected == null) {
+                Timber.tag(TAG).w("No known IIFE injection point found, appending exports outside closure")
                 playerJs + "\n" + exportCode
             } else {
-                Timber.tag(TAG).d("Exports injected into IIFE closure")
-                modified
+                Timber.tag(TAG).d("Exports injected into player closure before marker: $usedMarker")
+                injected
             }
         } else {
             Timber.tag(TAG).w("No exports to inject")

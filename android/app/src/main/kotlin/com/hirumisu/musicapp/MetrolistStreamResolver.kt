@@ -210,7 +210,7 @@ object MetrolistStreamResolver {
         if (metrolistData != null && metrolistData.streamUrl.isNotBlank()) {
             val transformed = prepareUrl(metrolistData.streamUrl)
             val metrolistClientName = metrolistData.clientName.ifBlank { "YTPlayerUtils.playerResponseForPlayback" }
-            if (transformed != null && isRangePlayable(transformed, metrolistClientName)) {
+            if (transformed != null && isRangePlayable(transformed, metrolistClientName, metrolistData.format.contentLength)) {
                 return NativePlayback(
                     url = transformed,
                     mimeType = metrolistData.format.mimeType.substringBefore(";"),
@@ -288,7 +288,7 @@ object MetrolistStreamResolver {
 
                 for (candidate in candidateUrls) {
                     val prepared = prepareUrl(candidate) ?: continue
-                    if (!isRangePlayable(prepared, client.clientName)) {
+                    if (!isRangePlayable(prepared, client.clientName, format.contentLength)) {
                         Timber.tag(TAG).w("Skipping %s stream for %s because byte validation failed", client.clientName, videoId)
                         continue
                     }
@@ -328,10 +328,17 @@ object MetrolistStreamResolver {
         return null
     }
 
-    private fun isRangePlayable(url: String, source: String = ""): Boolean {
-        val probes = listOf(0L to 1L, 1_048_576L to 1_048_577L)
+    private fun isRangePlayable(url: String, source: String = "", contentLength: Long? = null): Boolean {
+        val probes = mutableListOf(0L to 1L, 1_048_576L to 1_048_577L)
+        val total = contentLength?.takeIf { it > 2_097_152L }
+        if (total != null) {
+            val middle = (total / 2).coerceAtLeast(1_048_576L)
+            val nearEnd = (total - 65_536L).coerceAtLeast(0L)
+            probes += middle to (middle + 1L).coerceAtMost(total - 1L)
+            probes += nearEnd to (nearEnd + 1L).coerceAtMost(total - 1L)
+        }
         var firstProbeOk = false
-        for ((start, end) in probes) {
+        for ((start, end) in probes.distinct()) {
             val ok = try {
                 val builder = Request.Builder()
                     .url(url)
@@ -360,7 +367,22 @@ object MetrolistStreamResolver {
     private suspend fun prepareUrl(rawUrl: String): String? {
         val url = rawUrl.trim()
         if (!url.startsWith("http://") && !url.startsWith("https://")) return null
-        return runCatching { CipherDeobfuscator.transformNParamInUrl(url) }.getOrNull() ?: url
+        val hasNParam = Regex("[?&]n=").containsMatchIn(url)
+        if (!hasNParam) return url
+
+        val transformed = runCatching { CipherDeobfuscator.transformNParamInUrl(url) }
+            .onFailure { Timber.tag(TAG).w(it, "n-transform failed; rejecting throttled URL") }
+            .getOrNull()
+            ?: return null
+
+        // If n= is still identical, the player JS transform was not actually applied.
+        // Those URLs are exactly the ones that pass the first bytes and then return
+        // HTTP 403 around 1 MB, which is why tracks stopped in the middle.
+        if (transformed == url) {
+            Timber.tag(TAG).w("n-transform returned the original URL; rejecting throttled URL")
+            return null
+        }
+        return transformed
     }
 
     private fun formatComparator(quality: AudioQuality): Comparator<PlayerResponse.StreamingData.Format> = Comparator { a, b ->
@@ -390,9 +412,9 @@ object MetrolistStreamResolver {
         val normalized = source.uppercase(Locale.US)
         return when {
             normalized.contains("IOS") || normalized.contains("IPADOS") ->
-                "com.google.ios.youtube/19.09.3 (iPhone16,2; U; CPU iOS 17_3 like Mac OS X)"
+                "com.google.ios.youtube/21.03.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)"
             normalized.contains("ANDROID") ->
-                "com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip"
+                "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
             else -> UPSTREAM_USER_AGENT
         }
     }
@@ -488,7 +510,9 @@ private object MetrolistNativeStreamServer {
                 forceRefresh = false,
             )
         } catch (e: Exception) {
-            if (e is SocketException || e.cause is SocketException) {
+            val msg = e.message.orEmpty()
+            if (e is SocketException || e.cause is SocketException ||
+                e is java.io.IOException && (msg.contains("Broken pipe", true) || msg.contains("Connection reset", true))) {
                 Timber.tag(TAG).d("Client closed local stream connection: ${e.message}")
             } else {
                 try {
@@ -544,9 +568,9 @@ private object MetrolistNativeStreamServer {
                         ?: body?.contentLength()?.takeIf { it >= 0 }
                     val contentType = upstream.header("Content-Type") ?: playback.mimeType.ifBlank { "audio/webm" }
                     val totalLength = listOfNotNull(
-                        playback.contentLength?.takeIf { it > 0L },
                         parseTotalLength(upstreamContentRange),
                         if (upstream.code == 200 && safeStart == 0L) firstContentLength?.takeIf { it > 0L } else null,
+                        playback.contentLength?.takeIf { it > 0L },
                     ).firstOrNull()
 
                     val responseEnd = when {
@@ -730,17 +754,19 @@ private object MetrolistNativeStreamServer {
         end: Long,
     ): Pair<MetrolistStreamResolver.NativePlayback, okhttp3.Response> {
         var playback = initialPlayback
-        repeat(4) { attempt ->
+        repeat(5) { attempt ->
             val response = openUpstream(playback, start, end)
-            if (response.code != 403 && response.code != 404 && response.code != 410 && response.code != 416) {
+            val aligned = isAlignedUpstreamResponse(response, start)
+            if (response.code != 403 && response.code != 404 && response.code != 410 && response.code != 416 && aligned) {
                 return playback to response
             }
             Timber.tag(TAG).w(
-                "Upstream %s for %s at %s-%s. Refreshing stream attempt %s.",
+                "Upstream %s for %s at %s-%s aligned=%s. Refreshing stream attempt %s.",
                 response.code,
                 videoId,
                 start,
                 end,
+                aligned,
                 attempt + 1,
             )
             response.close()
@@ -748,6 +774,18 @@ private object MetrolistNativeStreamServer {
             playback = MetrolistStreamResolver.resolvePlaybackForProxy(context, videoId, quality, forceRefresh = true)
         }
         return playback to openUpstream(playback, start, end)
+    }
+
+    private fun isAlignedUpstreamResponse(response: okhttp3.Response, requestedStart: Long): Boolean {
+        if (response.code == 416) return true
+        if (requestedStart <= 0L && response.code == 200) return true
+        if (response.code != 206) {
+            // If a later chunk ignores Range and returns 200, copying it would repeat
+            // bytes from the start of the file and corrupt playback/seek.
+            return false
+        }
+        val actualStart = parseContentRangeStart(response.header("Content-Range"))
+        return actualStart == null || actualStart == requestedStart
     }
 
     private fun openUpstream(
@@ -772,9 +810,9 @@ private object MetrolistNativeStreamServer {
         val normalized = source.uppercase(Locale.US)
         return when {
             normalized.contains("IOS") || normalized.contains("IPADOS") ->
-                "com.google.ios.youtube/19.09.3 (iPhone16,2; U; CPU iOS 17_3 like Mac OS X)"
+                "com.google.ios.youtube/21.03.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)"
             normalized.contains("ANDROID") ->
-                "com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip"
+                "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
             else -> MetrolistStreamResolver.UPSTREAM_USER_AGENT
         }
     }

@@ -108,15 +108,25 @@ object FunctionNameExtractor {
 
     // N-parameter (throttle) transform function patterns
     private val N_FUNCTION_PATTERNS = listOf(
-        // Pattern 1: .get("n"))&&(b=FUNC[IDX](VAR)
-        Regex("""\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]+)(?:\[(\d+)\])?\(([a-zA-Z0-9])\)"""),
-        // Pattern 2: .get("n"))&&(FUNC=VAR[IDX](FUNC) (2025+ variant)
-        Regex("""\.get\("n"\)\)\s*&&\s*\(([a-zA-Z0-9$]+)\s*=\s*([a-zA-Z0-9$]+)(?:\[(\d+)\])?\(\1\)"""),
-        // Pattern 3: .get("n");if(m){var M=n.match... (April 2026 variant)
-        Regex("""\.get\("n"\);if\([a-zA-Z0-9$]+\)\s*\{[^}]*match"""),
-        // Pattern 4: String.fromCharCode(110) variant (110 = 'n')
-        Regex("""\(\s*([a-zA-Z0-9$]+)\s*=\s*String\.fromCharCode\(110\)"""),
-        // Pattern 5: enhanced_except_ function pattern
+        // Pattern 0: .get("n"))&&(b=FUNC[IDX](VAR)
+        Regex("""\.get\("n"\)\)&&\([a-zA-Z0-9$]+\s*=\s*([a-zA-Z0-9$]+)(?:\[(\d+)])?\([a-zA-Z0-9$]+\)"""),
+        // Pattern 1: .get("n"))&&(x=ARR[IDX](x))
+        Regex("""\.get\("n"\)\)\s*&&\s*\(([a-zA-Z0-9$]+)\s*=\s*([a-zA-Z0-9$]+)(?:\[(\d+)])?\(\1\)"""),
+        // Pattern 2: modern NewPipe pattern: NAME=function(...return X[45]
+        Regex("""([A-Za-z0-9_\$]{2,})\s*=\s*function[\s\S]{0,300}?return\s+[A-Z]\[\d+]"""),
+        // Pattern 3: a.D&&(b="nn"[+a.D],WL(a),c=a.j[b]||null)&&(c=ARR[0](c)
+        Regex("""[a-zA-Z0-9${'$'}_]="nn"\[\+[a-zA-Z0-9${'$'}_]+\.[a-zA-Z0-9${'$'}_]+],[a-zA-Z0-9${'$'}_]+\([a-zA-Z0-9${'$'}_]+\),[a-zA-Z0-9${'$'}_]+=[a-zA-Z0-9${'$'}_]+\.[a-zA-Z0-9${'$'}_]+\[[a-zA-Z0-9${'$'}_]+]\|\|null\)&&\([a-zA-Z0-9${'$'}_]+=([a-zA-Z0-9${'$'}_]+)(?:\[(\d+)])?"""),
+        // Pattern 4: same block but function called in fallback: ...||FUNC("")
+        Regex("""[a-zA-Z0-9${'$'}_]="nn"\[\+[a-zA-Z0-9${'$'}_]+\.[a-zA-Z0-9${'$'}_]+],[a-zA-Z0-9${'$'}_]+\([a-zA-Z0-9${'$'}_]+\),[a-zA-Z0-9${'$'}_]+=[a-zA-Z0-9${'$'}_]+\.[a-zA-Z0-9${'$'}_]+\[[a-zA-Z0-9${'$'}_]+]\|\|null\).+\|\|([a-zA-Z0-9${'$'}_]+)\(""\)"""),
+        // Pattern 5: ,Vb(m),W=m.j[c]||null)&&(W=cvb[0](W),m.set(c,W)
+        Regex(""",[a-zA-Z0-9${'$'}_]+\([a-zA-Z0-9${'$'}_]+\),[a-zA-Z0-9${'$'}_]+=[a-zA-Z0-9${'$'}_]+\.[a-zA-Z0-9${'$'}_]+\[[a-zA-Z0-9${'$'}_]+]\|\|null\)&&\(\b[a-zA-Z0-9${'$'}_]+=([a-zA-Z0-9${'$'}_]+)(?:\[(\d+)])?\([a-zA-Z0-9${'$'}_]+\),[a-zA-Z0-9${'$'}_]+\.set\((?:"n+"|[a-zA-Z0-9${'$'}_]+),[a-zA-Z0-9${'$'}_]+\)"""),
+        // Pattern 6: a.D&&(b="nn"[+a.D],c=a.get(b))&&(...||FUNC(""))
+        Regex("""[a-zA-Z0-9${'$'}_]="nn"\[\+[a-zA-Z0-9${'$'}_]+\.[a-zA-Z0-9${'$'}_]+],[a-zA-Z0-9${'$'}_]+=[a-zA-Z0-9${'$'}_]+\.get\([a-zA-Z0-9${'$'}_]+\)\).+\|\|([a-zA-Z0-9${'$'}_]+)\(""\)"""),
+        // Pattern 7: a.D&&(b="nn"[+a.D],c=a.get(b))&&(c=ARR[0](c)
+        Regex("""[a-zA-Z0-9${'$'}_]="nn"\[\+[a-zA-Z0-9${'$'}_]+\.[a-zA-Z0-9${'$'}_]+],[a-zA-Z0-9${'$'}_]+=[a-zA-Z0-9${'$'}_]+\.get\([a-zA-Z0-9${'$'}_]+\)\)&&\([a-zA-Z0-9${'$'}_]+=([a-zA-Z0-9${'$'}_]+)(?:\[(\d+)])?"""),
+        // Pattern 8: (b=String.fromCharCode(110),c=a.get(b))&&(c=BDa[0](c)
+        Regex("""\([a-zA-Z0-9${'$'}_]=String\.fromCharCode\(110\),[a-zA-Z0-9${'$'}_]=[a-zA-Z0-9${'$'}_]+\.get\([a-zA-Z0-9${'$'}_]\)\)&&\([a-zA-Z0-9${'$'}_]+=([a-zA-Z0-9${'$'}_]+)(?:\[(\d+)])?\([a-zA-Z0-9${'$'}_]\)"""),
+        // Pattern 9: enhanced_except_ function pattern
         Regex("""([a-zA-Z0-9$]+)\s*=\s*function\([a-zA-Z0-9]\)\s*\{[^}]*?enhanced_except_"""),
     )
 
@@ -252,40 +262,39 @@ object FunctionNameExtractor {
         Timber.tag(TAG).d("========== EXTRACTING N-FUNCTION ==========")
         Timber.tag(TAG).d("Player.js size: ${playerJs.length} chars")
 
-        // Try regex patterns first
+        // Try regex patterns first. Pattern 1 captures the temporary variable in
+        // group 1 and the real function/array in group 2. All other patterns keep
+        // the function or array name in group 1 and optional array index in the
+        // next numeric group, matching NewPipe's current extractor strategy.
         for ((index, pattern) in N_FUNCTION_PATTERNS.withIndex()) {
             Timber.tag(TAG).v("Trying n-func pattern $index: ${pattern.pattern.take(60)}...")
             val match = pattern.find(playerJs)
             if (match != null) {
-                when (index) {
-                    0 -> {
-                        val name = match.groupValues[1]
-                        val arrayIdx = match.groupValues[2].toIntOrNull()
-                        Timber.tag(TAG).d("N-FUNCTION FOUND via pattern $index:")
-                        Timber.tag(TAG).d("  name=$name, arrayIndex=$arrayIdx")
-                        return NFunctionInfo(name, arrayIdx, isHardcoded = false)
-                    }
-                    1 -> {
-                        val name = match.groupValues[2]
-                        val arrayIdx = match.groupValues[3].toIntOrNull()
-                        Timber.tag(TAG).d("N-FUNCTION FOUND via pattern $index:")
-                        Timber.tag(TAG).d("  name=$name, arrayIndex=$arrayIdx")
-                        return NFunctionInfo(name, arrayIdx, isHardcoded = false)
-                    }
-                    else -> {
-                        // Skip patterns that match but don't expose a usable function name.
-                        // E.g. the `.get("n");if(...){var M=n.match...` April 2026 variant has
-                        // no capturing groups and reading groupValues[1] would throw.
-                        if (pattern.toPattern().matcher("").groupCount() < 1) {
-                            Timber.tag(TAG).d("N-pattern $index matched but has no capture groups; skipping")
-                            continue
-                        }
-                        val name = match.groupValues[1]
-                        Timber.tag(TAG).d("N-FUNCTION FOUND via pattern $index:")
-                        Timber.tag(TAG).d("  name=$name")
-                        return NFunctionInfo(name, null, isHardcoded = false)
-                    }
+                val groupCount = match.groupValues.size - 1
+                if (groupCount < 1) {
+                    Timber.tag(TAG).d("N-pattern $index matched but has no capture groups; skipping")
+                    continue
                 }
+
+                val name = if (index == 1 && groupCount >= 2) {
+                    match.groupValues[2]
+                } else {
+                    match.groupValues[1]
+                }
+                val arrayIdx = when {
+                    index == 1 && groupCount >= 3 -> match.groupValues[3].toIntOrNull()
+                    groupCount >= 2 -> match.groupValues.drop(2).firstOrNull { it.toIntOrNull() != null }?.toIntOrNull()
+                    else -> null
+                }
+
+                if (name.isBlank()) {
+                    Timber.tag(TAG).d("N-pattern $index matched but function name is blank; skipping")
+                    continue
+                }
+
+                Timber.tag(TAG).d("N-FUNCTION FOUND via pattern $index:")
+                Timber.tag(TAG).d("  name=$name, arrayIndex=$arrayIdx")
+                return NFunctionInfo(name, arrayIdx, isHardcoded = false)
             }
         }
 

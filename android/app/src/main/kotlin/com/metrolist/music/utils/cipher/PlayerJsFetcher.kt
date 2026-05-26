@@ -25,7 +25,11 @@ object PlayerJsFetcher {
         .build()
 
     // Regex to extract player hash from iframe_api response
-    private val PLAYER_HASH_REGEX = Regex("""\\?/s\\?/player\\?/([a-zA-Z0-9_-]+)\\?/""")
+    private val PLAYER_HASH_REGEXES = listOf(
+        Regex("""/s/player/([a-zA-Z0-9_-]+)/"""),
+        Regex("""player/([a-zA-Z0-9_-]+)/"""),
+        Regex("""player_ias\.vflset/[^/]+/([a-zA-Z0-9_-]+)/"""),
+    )
 
     private fun getCacheDir(): File = File(CipherDeobfuscator.appContext.filesDir, "cipher_cache")
 
@@ -211,16 +215,17 @@ object PlayerJsFetcher {
         Timber.tag(TAG).d("iframe_api body length: ${body.length}")
         Timber.tag(TAG).v("iframe_api body preview: ${body.take(200)}...")
 
-        val match = PLAYER_HASH_REGEX.find(body)
-        if (match == null) {
-            Timber.tag(TAG).e("Could not find player hash in iframe_api response")
-            Timber.tag(TAG).d("Regex pattern: ${PLAYER_HASH_REGEX.pattern}")
-            return null
+        for (regex in PLAYER_HASH_REGEXES) {
+            val match = regex.find(body)
+            if (match != null) {
+                val hash = match.groupValues[1]
+                Timber.tag(TAG).d("Found player hash: $hash using ${regex.pattern}")
+                return hash
+            }
         }
-
-        val hash = match.groupValues[1]
-        Timber.tag(TAG).d("Found player hash: $hash")
-        return hash
+        Timber.tag(TAG).e("Could not find player hash in iframe_api response")
+        Timber.tag(TAG).d("Tried patterns: ${PLAYER_HASH_REGEXES.joinToString { it.pattern }}")
+        return null
     }
 
     private fun downloadPlayerJs(hash: String): String? {

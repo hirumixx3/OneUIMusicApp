@@ -531,9 +531,9 @@ object YTPlayerUtils {
         val name = client?.clientName?.uppercase() ?: ""
         return when {
             name.contains("IOS") || name.contains("IPADOS") ->
-                "com.google.ios.youtube/19.09.3 (iPhone16,2; U; CPU iOS 17_3 like Mac OS X)"
+                "com.google.ios.youtube/21.03.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)"
             name.contains("ANDROID") ->
-                "com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip"
+                "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
             else ->
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
         }
