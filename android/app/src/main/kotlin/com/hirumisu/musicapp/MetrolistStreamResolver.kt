@@ -386,6 +386,17 @@ object MetrolistStreamResolver {
         return originalBonus + audioBonus + cipherBonus + closeness
     }
 
+    internal fun userAgentForSource(source: String): String {
+        val normalized = source.uppercase(Locale.US)
+        return when {
+            normalized.contains("IOS") || normalized.contains("IPADOS") ->
+                "com.google.ios.youtube/19.09.3 (iPhone16,2; U; CPU iOS 17_3 like Mac OS X)"
+            normalized.contains("ANDROID") ->
+                "com.google.android.youtube/19.09.37 (Linux; U; Android 14) gzip"
+            else -> UPSTREAM_USER_AGENT
+        }
+    }
+
     internal const val UPSTREAM_USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 }
