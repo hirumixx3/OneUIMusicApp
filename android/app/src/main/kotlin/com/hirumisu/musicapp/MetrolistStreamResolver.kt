@@ -381,7 +381,7 @@ object MetrolistStreamResolver {
 
 private object MetrolistNativeStreamServer {
     private const val TAG = "MetrolistNativeStreamServer"
-    private const val CHUNK_LENGTH = 1024 * 1024L
+    private const val CHUNK_LENGTH = 512 * 1024L
 
     @Volatile private var appContext: Context? = null
     @Volatile private var serverSocket: ServerSocket? = null
@@ -495,7 +495,7 @@ private object MetrolistNativeStreamServer {
             ?: (safeStart + CHUNK_LENGTH - 1)
         var opened = openChunkWithRefresh(context, videoId, quality, playback, safeStart, firstEnd)
         playback = opened.first
-        var firstResponse = opened.second
+        val firstResponse = opened.second
 
         firstResponse.use { upstream ->
             when (upstream.code) {
@@ -506,19 +506,28 @@ private object MetrolistNativeStreamServer {
                         ?.toLongOrNull()
                         ?: body?.contentLength()?.takeIf { it >= 0 }
                     val contentType = upstream.header("Content-Type") ?: playback.mimeType.ifBlank { "audio/webm" }
-                    val totalLength = playback.contentLength ?: parseTotalLength(upstreamContentRange)
-                    val upstreamStart = parseContentRangeStart(upstreamContentRange) ?: safeStart
-                    val firstDeclaredEnd = parseContentRangeEnd(upstreamContentRange)
-                        ?: firstContentLength?.let { upstreamStart + it - 1 }
-                    // If GoogleVideo does not expose the total file size in Content-Range,
-                    // do NOT stop after the first chunk. Keep streaming finite upstream
-                    // ranges until GoogleVideo returns 416 or the final short body.
-                    val finalEnd: Long? = when {
+
+                    // The old local server tried to keep a single HTTP connection open until
+                    // the end of the track. When googlevideo closed one upstream range early,
+                    // ExoPlayer saw a premature EOF: songs stopped in the middle, seek froze,
+                    // and sometimes playback jumped back to 00:00.
+                    //
+                    // Metrolist's real ResolvingDataSource gives ExoPlayer small bounded
+                    // subranges. Recreate that here: each local Range request returns exactly
+                    // one bounded chunk with a proper Content-Range. ExoPlayer then requests
+                    // the next chunk or the seek target by itself.
+                    val totalLength = listOfNotNull(
+                        playback.contentLength?.takeIf { it > 0L },
+                        parseTotalLength(upstreamContentRange),
+                        if (upstream.code == 200 && safeStart == 0L) firstContentLength?.takeIf { it > 0L } else null,
+                    ).firstOrNull()
+
+                    val chunkEnd = when {
                         requestedEnd != null && totalLength != null -> min(requestedEnd, totalLength - 1)
                         requestedEnd != null -> requestedEnd
-                        totalLength != null -> totalLength - 1
-                        else -> null
-                    }
+                        totalLength != null -> min(safeStart + CHUNK_LENGTH - 1, totalLength - 1)
+                        else -> safeStart + CHUNK_LENGTH - 1
+                    }.coerceAtLeast(safeStart)
 
                     val outHeaders = linkedMapOf(
                         "Content-Type" to contentType,
@@ -529,42 +538,67 @@ private object MetrolistNativeStreamServer {
                         "X-Metrolist-Itag" to playback.itag.toString(),
                     )
 
-                    if (hasRange && finalEnd != null) {
-                        val totalPart = totalLength?.toString() ?: "*"
-                        outHeaders["Content-Range"] = "bytes $safeStart-$finalEnd/$totalPart"
-                        val responseLength = finalEnd - safeStart + 1
-                        if (responseLength >= 0 && totalLength != null) {
-                            outHeaders["Content-Length"] = responseLength.toString()
-                        }
+                    if (hasRange) {
+                        val responseLength = chunkEnd - safeStart + 1
+                        outHeaders["Content-Range"] = buildContentRange(safeStart, chunkEnd, totalLength)
+                            ?: "bytes $safeStart-$chunkEnd/*"
+                        outHeaders["Content-Length"] = responseLength.toString()
                         writeHeaders(output, 206, "Partial Content", outHeaders)
-                    } else {
-                        // Unknown length/open-ended request: use a plain streaming response.
-                        // Do not advertise a fake 512 KB Content-Length, otherwise ExoPlayer
-                        // treats that first chunk as the end of the whole track.
-                        if (totalLength != null && totalLength >= 0) {
-                            outHeaders["Content-Length"] = totalLength.toString()
+
+                        if (!headOnly && body != null) {
+                            var copied = copyResponseBodyLimited(body, output, responseLength)
+                            var nextStart = safeStart + copied
+                            var emptyReads = 0
+
+                            // Fill only THIS local chunk. Do not stream the whole track in one
+                            // request. That is what makes seeking/skip responsive and prevents a
+                            // random upstream EOF from becoming the end of the song.
+                            while (copied < responseLength && nextStart <= chunkEnd) {
+                                val nextEnd = min(chunkEnd, nextStart + CHUNK_LENGTH - 1)
+                                val nextOpened = openChunkWithRefresh(context, videoId, quality, playback, nextStart, nextEnd)
+                                playback = nextOpened.first
+                                val nextResponse = nextOpened.second
+                                if (nextResponse.code == 416) {
+                                    nextResponse.close()
+                                    break
+                                }
+                                if (nextResponse.code != 200 && nextResponse.code != 206) {
+                                    Timber.tag(TAG).e("Upstream HTTP %s for %s while filling local chunk %s-%s", nextResponse.code, videoId, nextStart, nextEnd)
+                                    nextResponse.close()
+                                    if (++emptyReads >= 3) break else continue
+                                }
+                                val nextBody = nextResponse.body
+                                if (nextBody == null) {
+                                    nextResponse.close()
+                                    if (++emptyReads >= 3) break else continue
+                                }
+                                val remaining = responseLength - copied
+                                val got = nextResponse.use { copyResponseBodyLimited(nextBody, output, remaining) }
+                                output.flush()
+                                if (got <= 0L) {
+                                    if (++emptyReads >= 3) break else continue
+                                }
+                                emptyReads = 0
+                                copied += got
+                                nextStart += got
+                            }
                         }
-                        writeHeaders(output, 200, "OK", outHeaders)
+                        output.flush()
+                        return
                     }
 
-                    if (!headOnly && body != null) {
-                        var bytesWritten = 0L
-                        val firstExpectedBytes = firstContentLength
-                            ?: firstDeclaredEnd?.let { it - upstreamStart + 1 }
-                            ?: (firstEnd - safeStart + 1)
-                        val firstCopied = copyResponseBody(body, output)
-                        bytesWritten += firstCopied
+                    // Fallback for clients that do not send Range. Keep it playable, but this
+                    // path is not used by ExoPlayer for normal online playback/seeking.
+                    if (totalLength != null && totalLength >= 0) {
+                        outHeaders["Content-Length"] = totalLength.toString()
+                    }
+                    writeHeaders(output, 200, "OK", outHeaders)
 
-                        // Important: advance by the bytes actually delivered to ExoPlayer,
-                        // not by the end advertised in Content-Range. When the upstream
-                        // connection dies mid-chunk, trusting Content-Range skips bytes and
-                        // makes the song stop early or jump back to 0:00.
+                    if (!headOnly && body != null) {
+                        val firstCopied = copyResponseBody(body, output)
                         var nextStart = safeStart + firstCopied
                         var emptyReads = 0
-
-                        // If the first chunk was short but GoogleVideo declared a larger
-                        // chunk, continue from the exact missing byte instead of treating it
-                        // as the end of the track.
+                        val finalEnd = totalLength?.let { it - 1 }
                         while ((finalEnd == null || nextStart <= finalEnd) && firstCopied > 0L) {
                             val nextEnd = finalEnd?.let { min(nextStart + CHUNK_LENGTH - 1, it) }
                                 ?: (nextStart + CHUNK_LENGTH - 1)
@@ -576,7 +610,6 @@ private object MetrolistNativeStreamServer {
                                 break
                             }
                             if (nextResponse.code != 200 && nextResponse.code != 206) {
-                                Timber.tag(TAG).e("Upstream HTTP %s for %s while reading %s-%s", nextResponse.code, videoId, nextStart, nextEnd)
                                 nextResponse.close()
                                 if (++emptyReads >= 3) break else continue
                             }
@@ -585,32 +618,16 @@ private object MetrolistNativeStreamServer {
                                 nextResponse.close()
                                 if (++emptyReads >= 3) break else continue
                             }
-                            var copiedBytes = 0L
-                            var expectedBytes = nextEnd - nextStart + 1
-                            var declaredEnd: Long? = null
-                            nextResponse.use { response ->
-                                val cr = response.header("Content-Range")
-                                val declaredStart = parseContentRangeStart(cr) ?: nextStart
-                                declaredEnd = parseContentRangeEnd(cr)
-                                expectedBytes = response.header("Content-Length")?.toLongOrNull()
-                                    ?: declaredEnd?.let { it - declaredStart + 1 }
-                                    ?: expectedBytes
-                                copiedBytes = copyResponseBody(nextBody, output)
-                            }
+                            val copiedBytes = nextResponse.use { copyResponseBody(nextBody, output) }
                             output.flush()
-
                             if (copiedBytes <= 0L) {
                                 if (++emptyReads >= 3) break else continue
                             }
                             emptyReads = 0
-                            bytesWritten += copiedBytes
                             nextStart += copiedBytes
-
-                            // Unknown total + no Content-Range + short body is the only
-                            // reliable signal that we reached the tail of the media. If a
-                            // Content-Range existed and the body was short, keep requesting
-                            // from nextStart to fill the missing bytes.
-                            if (finalEnd == null && declaredEnd == null && copiedBytes < expectedBytes) break
+                            // Do NOT break just because a chunk was short. A short upstream read
+                            // can be network cut, not the real end. The next request will return
+                            // 416/0 only when the media really ended.
                         }
                     }
                     output.flush()
@@ -636,6 +653,31 @@ private object MetrolistNativeStreamServer {
                     // local response as complete; return the amount copied so the
                     // caller can resume from the exact missing byte.
                     Timber.tag(TAG).w(e, "Upstream read interrupted after %s bytes", written)
+                    break
+                }
+                if (read <= 0) break
+                output.write(buffer, 0, read)
+                written += read.toLong()
+            }
+        }
+        return written
+    }
+
+    private fun copyResponseBodyLimited(
+        body: okhttp3.ResponseBody,
+        output: BufferedOutputStream,
+        maxBytes: Long,
+    ): Long {
+        var written = 0L
+        if (maxBytes <= 0L) return 0L
+        body.byteStream().use { stream ->
+            val buffer = ByteArray(64 * 1024)
+            while (written < maxBytes) {
+                val remaining = (maxBytes - written).coerceAtMost(buffer.size.toLong()).toInt()
+                val read = try {
+                    stream.read(buffer, 0, remaining)
+                } catch (e: java.io.IOException) {
+                    Timber.tag(TAG).w(e, "Upstream read interrupted after %s/%s bytes", written, maxBytes)
                     break
                 }
                 if (read <= 0) break
