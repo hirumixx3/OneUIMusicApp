@@ -3337,7 +3337,6 @@ class MusicPlayerProvider extends ChangeNotifier {
     if (generation != _trackLoadGeneration) return;
     final current = _currentTrack;
     if (current == null || !current.isRemote || current.libraryKey != track.libraryKey) return;
-    if (!player.playing) return;
     final pos = player.position;
     final state = player.processingState;
     if (pos <= const Duration(milliseconds: 500) &&
