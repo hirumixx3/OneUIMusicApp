@@ -1,0 +1,48 @@
+#!/bin/sh
+set -e
+
+APP_HOME="$(cd "$(dirname "$0")" && pwd)"
+WRAPPER_PROPS="$APP_HOME/gradle/wrapper/gradle-wrapper.properties"
+
+if [ ! -f "$WRAPPER_PROPS" ]; then
+  echo "Missing $WRAPPER_PROPS" >&2
+  exit 1
+fi
+
+DIST_URL=$(grep '^distributionUrl=' "$WRAPPER_PROPS" | cut -d= -f2- | sed 's#\\:#:#g')
+DIST_NAME=$(basename "$DIST_URL")
+DIST_DIR_NAME=$(basename "$DIST_URL" .zip)
+CACHE_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}/wrapper/dists/$DIST_DIR_NAME"
+GRADLE_BIN=$(find "$CACHE_DIR" -type f -path "*/bin/gradle" 2>/dev/null | head -n 1)
+
+download() {
+  mkdir -p "$CACHE_DIR"
+  TMP_ZIP="$CACHE_DIR/$DIST_NAME"
+  if [ ! -f "$TMP_ZIP" ]; then
+    echo "Downloading Gradle distribution $DIST_URL"
+    if command -v curl >/dev/null 2>&1; then
+      curl -L "$DIST_URL" -o "$TMP_ZIP"
+    elif command -v wget >/dev/null 2>&1; then
+      wget "$DIST_URL" -O "$TMP_ZIP"
+    else
+      echo "curl or wget is required to download Gradle." >&2
+      exit 1
+    fi
+  fi
+  if ! command -v unzip >/dev/null 2>&1; then
+    echo "unzip is required to extract Gradle." >&2
+    exit 1
+  fi
+  unzip -oq "$TMP_ZIP" -d "$CACHE_DIR"
+}
+
+if [ -z "$GRADLE_BIN" ]; then
+  download
+  GRADLE_BIN=$(find "$CACHE_DIR" -type f -path "*/bin/gradle" 2>/dev/null | head -n 1)
+fi
+
+if [ ! -x "$GRADLE_BIN" ]; then
+  chmod +x "$GRADLE_BIN"
+fi
+
+exec "$GRADLE_BIN" "$@"
