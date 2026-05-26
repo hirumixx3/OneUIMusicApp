@@ -24,6 +24,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.math.max
 import kotlin.math.min
@@ -52,6 +53,7 @@ object MetrolistStreamResolver {
         val bitrate: Int,
         val itag: Int,
         val expiresInSeconds: Int,
+        val contentLength: Long?,
         val durationMs: Long,
         val title: String,
         val source: String,
@@ -78,6 +80,9 @@ object MetrolistStreamResolver {
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
             .build()
     }
 
@@ -210,6 +215,7 @@ object MetrolistStreamResolver {
                     bitrate = metrolistData.format.bitrate,
                     itag = metrolistData.format.itag,
                     expiresInSeconds = metrolistData.streamExpiresInSeconds,
+                    contentLength = metrolistData.format.contentLength,
                     durationMs = ((metrolistData.videoDetails?.lengthSeconds ?: "0").toLongOrNull() ?: 0L) * 1000L,
                     title = metrolistData.videoDetails?.title ?: "",
                     source = "YTPlayerUtils.playerResponseForPlayback",
@@ -290,6 +296,7 @@ object MetrolistStreamResolver {
                         bitrate = format.bitrate,
                         itag = format.itag,
                         expiresInSeconds = response.streamingData?.expiresInSeconds ?: 1800,
+                        contentLength = format.contentLength,
                         durationMs = ((response.videoDetails?.lengthSeconds ?: "0").toLongOrNull() ?: 0L) * 1000L,
                         title = response.videoDetails?.title ?: "",
                         source = client.clientName,
@@ -309,6 +316,7 @@ object MetrolistStreamResolver {
                 bitrate = 0,
                 itag = itag,
                 expiresInSeconds = 1800,
+                contentLength = null,
                 durationMs = 0L,
                 title = "",
                 source = "newpipe_streaminfo",
@@ -373,7 +381,7 @@ object MetrolistStreamResolver {
 
 private object MetrolistNativeStreamServer {
     private const val TAG = "MetrolistNativeStreamServer"
-    private const val CHUNK_LENGTH = 512 * 1024L
+    private const val CHUNK_LENGTH = 1024 * 1024L
 
     @Volatile private var appContext: Context? = null
     @Volatile private var serverSocket: ServerSocket? = null
@@ -411,7 +419,7 @@ private object MetrolistNativeStreamServer {
     }
 
     private fun handleClient(socket: Socket) {
-        socket.soTimeout = 60_000
+        socket.soTimeout = 120_000
         try {
             val input = BufferedInputStream(socket.getInputStream())
             val output = BufferedOutputStream(socket.getOutputStream())
@@ -498,16 +506,13 @@ private object MetrolistNativeStreamServer {
                         ?.toLongOrNull()
                         ?: body?.contentLength()?.takeIf { it >= 0 }
                     val contentType = upstream.header("Content-Type") ?: playback.mimeType.ifBlank { "audio/webm" }
-                    val totalLength = parseTotalLength(upstreamContentRange)
+                    val totalLength = playback.contentLength ?: parseTotalLength(upstreamContentRange)
                     val upstreamStart = parseContentRangeStart(upstreamContentRange) ?: safeStart
-                    val firstChunkEnd = parseContentRangeEnd(upstreamContentRange)
+                    val firstDeclaredEnd = parseContentRangeEnd(upstreamContentRange)
                         ?: firstContentLength?.let { upstreamStart + it - 1 }
-                        ?: firstEnd
                     // If GoogleVideo does not expose the total file size in Content-Range,
-                    // do NOT stop after the first 512 KB chunk. That was the reason online
-                    // tracks played only part of the song and then jumped back/stalled at 0:00.
-                    // For unknown length we stream finite upstream chunks until GoogleVideo
-                    // returns 416, an empty body, or a short final chunk.
+                    // do NOT stop after the first chunk. Keep streaming finite upstream
+                    // ranges until GoogleVideo returns 416 or the final short body.
                     val finalEnd: Long? = when {
                         requestedEnd != null && totalLength != null -> min(requestedEnd, totalLength - 1)
                         requestedEnd != null -> requestedEnd
@@ -544,18 +549,25 @@ private object MetrolistNativeStreamServer {
 
                     if (!headOnly && body != null) {
                         var bytesWritten = 0L
-                        bytesWritten += copyResponseBody(body, output)
+                        val firstExpectedBytes = firstContentLength
+                            ?: firstDeclaredEnd?.let { it - upstreamStart + 1 }
+                            ?: (firstEnd - safeStart + 1)
+                        val firstCopied = copyResponseBody(body, output)
+                        bytesWritten += firstCopied
 
-                        // The key fix for 00:00: never open googlevideo with an
-                        // open-ended Range like bytes=0-. The log showed that
-                        // exact request returning HTTP 403. We expose one
-                        // continuous localhost stream to ExoPlayer, but upstream
-                        // googlevideo is read in finite Metrolist-sized ranges.
-                        var nextStart = firstChunkEnd + 1
-                        while (finalEnd == null || nextStart <= finalEnd) {
+                        // Important: advance by the bytes actually delivered to ExoPlayer,
+                        // not by the end advertised in Content-Range. When the upstream
+                        // connection dies mid-chunk, trusting Content-Range skips bytes and
+                        // makes the song stop early or jump back to 0:00.
+                        var nextStart = safeStart + firstCopied
+                        var emptyReads = 0
+
+                        // If the first chunk was short but GoogleVideo declared a larger
+                        // chunk, continue from the exact missing byte instead of treating it
+                        // as the end of the track.
+                        while ((finalEnd == null || nextStart <= finalEnd) && firstCopied > 0L) {
                             val nextEnd = finalEnd?.let { min(nextStart + CHUNK_LENGTH - 1, it) }
                                 ?: (nextStart + CHUNK_LENGTH - 1)
-                            val expectedBytes = nextEnd - nextStart + 1
                             val nextOpened = openChunkWithRefresh(context, videoId, quality, playback, nextStart, nextEnd)
                             playback = nextOpened.first
                             val nextResponse = nextOpened.second
@@ -566,27 +578,39 @@ private object MetrolistNativeStreamServer {
                             if (nextResponse.code != 200 && nextResponse.code != 206) {
                                 Timber.tag(TAG).e("Upstream HTTP %s for %s while reading %s-%s", nextResponse.code, videoId, nextStart, nextEnd)
                                 nextResponse.close()
-                                break
+                                if (++emptyReads >= 3) break else continue
                             }
                             val nextBody = nextResponse.body
                             if (nextBody == null) {
                                 nextResponse.close()
-                                break
+                                if (++emptyReads >= 3) break else continue
                             }
                             var copiedBytes = 0L
-                            nextResponse.use {
+                            var expectedBytes = nextEnd - nextStart + 1
+                            var declaredEnd: Long? = null
+                            nextResponse.use { response ->
+                                val cr = response.header("Content-Range")
+                                val declaredStart = parseContentRangeStart(cr) ?: nextStart
+                                declaredEnd = parseContentRangeEnd(cr)
+                                expectedBytes = response.header("Content-Length")?.toLongOrNull()
+                                    ?: declaredEnd?.let { it - declaredStart + 1 }
+                                    ?: expectedBytes
                                 copiedBytes = copyResponseBody(nextBody, output)
-                                bytesWritten += copiedBytes
-                                val actualEnd = parseContentRangeEnd(nextResponse.header("Content-Range"))
-                                    ?: (nextStart + copiedBytes - 1)
-                                nextStart = actualEnd + 1
                             }
                             output.flush()
 
-                            // Unknown total length: a short chunk means GoogleVideo sent
-                            // the tail of the file. Stop cleanly only after writing it.
-                            if (finalEnd == null && copiedBytes < expectedBytes) break
-                            if (copiedBytes <= 0L) break
+                            if (copiedBytes <= 0L) {
+                                if (++emptyReads >= 3) break else continue
+                            }
+                            emptyReads = 0
+                            bytesWritten += copiedBytes
+                            nextStart += copiedBytes
+
+                            // Unknown total + no Content-Range + short body is the only
+                            // reliable signal that we reached the tail of the media. If a
+                            // Content-Range existed and the body was short, keep requesting
+                            // from nextStart to fill the missing bytes.
+                            if (finalEnd == null && declaredEnd == null && copiedBytes < expectedBytes) break
                         }
                     }
                     output.flush()
@@ -605,7 +629,15 @@ private object MetrolistNativeStreamServer {
         body.byteStream().use { stream ->
             val buffer = ByteArray(64 * 1024)
             while (true) {
-                val read = stream.read(buffer)
+                val read = try {
+                    stream.read(buffer)
+                } catch (e: java.io.IOException) {
+                    // GoogleVideo sometimes closes a range early. Do not mark the
+                    // local response as complete; return the amount copied so the
+                    // caller can resume from the exact missing byte.
+                    Timber.tag(TAG).w(e, "Upstream read interrupted after %s bytes", written)
+                    break
+                }
                 if (read <= 0) break
                 output.write(buffer, 0, read)
                 written += read.toLong()
