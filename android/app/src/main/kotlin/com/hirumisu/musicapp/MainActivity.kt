@@ -118,14 +118,14 @@ class MainActivity : AudioServiceActivity() {
                     }
                     "nativePlay" -> {
                         val args = call.arguments as? Map<String, Any?> ?: emptyMap()
-                        runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
                             MetrolistNativePlayer.play(applicationContext, args)
                         }
                     }
-                    "nativePause" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                    "nativePause" -> runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
                         MetrolistNativePlayer.pause()
                     }
-                    "nativeResume" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                    "nativeResume" -> runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
                         MetrolistNativePlayer.resume()
                     }
                     "nativeSeek" -> {
@@ -135,19 +135,19 @@ class MainActivity : AudioServiceActivity() {
                             is String -> rawPosition.toLongOrNull() ?: 0L
                             else -> 0L
                         }
-                        runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
                             MetrolistNativePlayer.seek(positionMs)
                         }
                     }
-                    "nativeStop" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                    "nativeStop" -> runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
                         MetrolistNativePlayer.stop()
                     }
-                    "nativeState" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                    "nativeState" -> runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
                         MetrolistNativePlayer.state()
                     }
                     "nativeInvalidate" -> {
                         val videoId = call.argument<String>("videoId") ?: ""
-                        runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
                             MetrolistNativePlayer.invalidate(videoId)
                         }
                     }
@@ -347,6 +347,21 @@ class MainActivity : AudioServiceActivity() {
         val cookie = prefs.getString("yt_cookie", null)
         if (!cookie.isNullOrBlank()) {
             YouTube.cookie = cookie
+        }
+    }
+
+    private fun runOnMain(result: MethodChannel.Result, errorCode: String, block: () -> Any?) {
+        val action = {
+            try {
+                result.success(block())
+            } catch (e: Exception) {
+                result.error(errorCode, e.message ?: e.javaClass.simpleName, null)
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action()
+        } else {
+            mainHandler.post { action() }
         }
     }
 

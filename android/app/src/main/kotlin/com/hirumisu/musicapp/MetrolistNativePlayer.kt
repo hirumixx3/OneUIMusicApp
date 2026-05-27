@@ -88,8 +88,9 @@ object MetrolistNativePlayer {
 
             val now = System.currentTimeMillis()
             songUrlCache[mediaId]?.takeIf { it.second > now }?.let { cached ->
+                // Same behavior as the old Metrolist MusicService: once the stream URL is cached,
+                // keep ExoPlayer's requested range untouched and only replace the URI.
                 return@Factory dataSpec.withUri(Uri.parse(cached.first))
-                    .subrange(dataSpec.uriPositionOffset, CHUNK_LENGTH)
             }
 
             val playback = MetrolistStreamResolver.resolvePlaybackForProxy(
