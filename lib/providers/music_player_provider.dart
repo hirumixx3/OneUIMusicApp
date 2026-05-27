@@ -2702,21 +2702,17 @@ class MusicPlayerProvider extends ChangeNotifier {
 
     try {
       final prepareTimeout = track.isRemote ? const Duration(seconds: 10) : const Duration(seconds: 5);
-      Future<void> loadSource() => _setBestAudioSource(track).timeout(
+      Future<void> loadSource() => _setBestAudioSource(track, generation: generation).timeout(
             prepareTimeout,
             onTimeout: () => throw Exception(track.isRemote
                 ? 'Timeout no Innertube do Metrolist'
                 : 'Timeout ao abrir arquivo local'),
           );
 
-      if (track.isRemote) {
-        // Online não pode ficar preso esperando uma seleção antiga terminar.
-        // Cada toque novo incrementa _trackLoadGeneration e torna obsoleto o
-        // carregamento anterior, então carregamos a fonte atual sem a barreira.
-        await loadSource();
-      } else {
-        await _serializeAudioSourceLoad(loadSource);
-      }
+      // O resolver pode rodar fora da fila, mas a troca real do AudioPlayer é
+      // serializada dentro de _setBestAudioSource. Assim um toque antigo nunca
+      // sobrescreve a música nova quando termina atrasado.
+      await loadSource();
       if (generation != _trackLoadGeneration) return;
 
       if (autoSeekMs > 0) {
@@ -2793,7 +2789,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     return null;
   }
 
-  Future<void> _setBestAudioSource(AudioTrack track) async {
+  Future<void> _setBestAudioSource(AudioTrack track, {int? generation}) async {
     try {
       await player.stop().timeout(const Duration(milliseconds: 350));
     } catch (_) {}
@@ -2812,16 +2808,21 @@ class MusicPlayerProvider extends ChangeNotifier {
         track,
         forceRefresh: _remoteProxyFallbackKeys.contains(track.libraryKey),
       );
+      if (generation != null && generation != _trackLoadGeneration) return;
       final rawUrl = (resolvedTrack.remoteStreamUri ?? resolvedTrack.uri).trim();
       final remoteUri = Uri.tryParse(rawUrl);
       if (remoteUri == null || !(remoteUri.scheme == 'http' || remoteUri.scheme == 'https')) {
         throw Exception('Innertube do Metrolist não devolveu uma URL googlevideo válida');
       }
 
-      await player.setAudioSource(
-        await _audioSourceForUri(remoteUri, resolvedTrack),
-        preload: false,
-      );
+      await _serializeAudioSourceLoad(() async {
+        if (generation != null && generation != _trackLoadGeneration) return;
+        await player.setAudioSource(
+          await _audioSourceForUri(remoteUri, resolvedTrack),
+          preload: false,
+        );
+      });
+      if (generation != null && generation != _trackLoadGeneration) return;
 
       _manualRemoteQueueMode = true;
       _queue = List<AudioTrack>.from(queue);
@@ -2841,14 +2842,19 @@ class MusicPlayerProvider extends ChangeNotifier {
     // Isso era o que travava música local antes de tocar. Carrega só a faixa
     // clicada e mantém a fila só na memória para próximo/anterior.
     final candidate = await _quickPlayableUriForTrack(track, preferResolvedPath: true);
+    if (generation != null && generation != _trackLoadGeneration) return;
     if (candidate == null) {
       throw Exception('arquivo local sem caminho válido');
     }
 
-    await player.setAudioSource(
-      await _audioSourceForUri(candidate, track),
-      preload: false,
-    );
+    await _serializeAudioSourceLoad(() async {
+      if (generation != null && generation != _trackLoadGeneration) return;
+      await player.setAudioSource(
+        await _audioSourceForUri(candidate, track),
+        preload: false,
+      );
+    });
+    if (generation != null && generation != _trackLoadGeneration) return;
     // O player carrega uma única fonte local por vez. Se deixarmos o
     // currentIndexStream do just_audio atualizar a UI, ele sempre emite 0 e
     // sobrescreve o player com a primeira faixa do álbum. A fila continua em
