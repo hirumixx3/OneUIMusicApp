@@ -102,7 +102,7 @@ class FloatingPlayerBar extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       _MiniControlButton(
-                        icon: provider.player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        icon: provider.isPlaybackPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                         onTap: provider.togglePlayback,
                         filled: true,
                       ),

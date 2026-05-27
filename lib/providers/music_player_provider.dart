@@ -187,6 +187,18 @@ class MusicPlayerProvider extends ChangeNotifier {
   EqualizerPreset _equalizerPreset = EqualizerPreset.balanced;
   List<EqualizerBandSetting> _equalizerBands = const <EqualizerBandSetting>[];
 
+  final StreamController<Duration> _nativePositionController = StreamController<Duration>.broadcast();
+  final StreamController<Duration?> _nativeDurationController = StreamController<Duration?>.broadcast();
+  Timer? _nativeStatePoller;
+  bool _nativeOnlinePlaying = false;
+  bool _nativeOnlinePlayWhenReady = false;
+  Duration _nativeOnlinePosition = Duration.zero;
+  Duration _nativeOnlineDuration = Duration.zero;
+  Duration _nativeOnlineBufferedPosition = Duration.zero;
+  String _nativeOnlineState = 'idle';
+  String? _nativeOnlineMediaId;
+  bool _handlingNativeEnded = false;
+
   MusicPlayerProvider() {
     _playerStateSub = player.playerStateStream.listen(_handlePlayerState);
     _positionSub = player.positionStream.listen((_) {
@@ -236,6 +248,82 @@ class MusicPlayerProvider extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> _invokeMetrolistList(String method, [Map<String, dynamic>? args]) async {
     final result = await _metrolistChannel.invokeMethod<dynamic>(method, args ?? const <String, dynamic>{});
     return _nativeMapList(result);
+  }
+
+  Future<Map<String, dynamic>> _invokeNativePlayer(String method, [Map<String, dynamic>? args]) async {
+    final result = await _metrolistChannel.invokeMethod<dynamic>(method, args ?? const <String, dynamic>{});
+    return _nativeMap(result);
+  }
+
+  Duration _durationFromNativeMs(dynamic value) {
+    final ms = value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+    return Duration(milliseconds: ms < 0 ? 0 : ms);
+  }
+
+  void _applyNativePlayerState(Map<String, dynamic> state, {bool notify = true}) {
+    _nativeOnlinePlaying = state['playing'] == true;
+    _nativeOnlinePlayWhenReady = state['playWhenReady'] == true;
+    _nativeOnlinePosition = _durationFromNativeMs(state['positionMs']);
+    _nativeOnlineBufferedPosition = _durationFromNativeMs(state['bufferedPositionMs']);
+    final reportedDuration = _durationFromNativeMs(state['durationMs']);
+    _nativeOnlineDuration = reportedDuration > Duration.zero ? reportedDuration : (activeDisplayTrack?.duration ?? Duration.zero);
+    _nativeOnlineState = '${state['state'] ?? 'idle'}';
+    _nativeOnlineMediaId = '${state['mediaId'] ?? ''}'.trim();
+    if (!_nativePositionController.isClosed) _nativePositionController.add(_nativeOnlinePosition);
+    if (!_nativeDurationController.isClosed) _nativeDurationController.add(_nativeOnlineDuration > Duration.zero ? _nativeOnlineDuration : null);
+    if (notify) notifyListeners();
+  }
+
+  Future<void> _refreshNativePlayerState({bool notify = true}) async {
+    if (!_usingNativeOnlinePlayer) return;
+    try {
+      final state = await _invokeNativePlayer('nativeState');
+      _applyNativePlayerState(state, notify: notify);
+      final now = DateTime.now();
+      if (now.difference(_lastPersistAt) >= const Duration(seconds: 1)) {
+        _lastPersistAt = now;
+        unawaited(_persistCurrentTrack());
+      }
+      if (_nativeOnlineState == 'ended' && !_handlingNativeEnded) {
+        _handlingNativeEnded = true;
+        if (_repeatMode == RepeatMode.track && _currentTrack != null) {
+          await seek(Duration.zero);
+          await _invokeNativePlayer('nativeResume');
+        } else {
+          await nextTrack(wrap: true);
+        }
+        _handlingNativeEnded = false;
+      }
+    } catch (_) {}
+  }
+
+  void _startNativeStatePolling() {
+    _nativeStatePoller ??= Timer.periodic(const Duration(milliseconds: 500), (_) {
+      unawaited(_refreshNativePlayerState());
+    });
+    unawaited(_refreshNativePlayerState());
+  }
+
+  void _stopNativeStatePolling({bool reset = false}) {
+    _nativeStatePoller?.cancel();
+    _nativeStatePoller = null;
+    if (reset) {
+      _nativeOnlinePlaying = false;
+      _nativeOnlinePlayWhenReady = false;
+      _nativeOnlinePosition = Duration.zero;
+      _nativeOnlineBufferedPosition = Duration.zero;
+      _nativeOnlineState = 'idle';
+      _nativeOnlineMediaId = null;
+      if (!_nativePositionController.isClosed) _nativePositionController.add(Duration.zero);
+      if (!_nativeDurationController.isClosed) _nativeDurationController.add(null);
+    }
+  }
+
+  Future<void> _stopNativeOnlinePlayback({bool reset = true}) async {
+    try {
+      await _invokeNativePlayer('nativeStop').timeout(const Duration(milliseconds: 600));
+    } catch (_) {}
+    _stopNativeStatePolling(reset: reset);
   }
 
   AudioTrack _trackFromNative(dynamic value) {
@@ -528,6 +616,20 @@ class MusicPlayerProvider extends ChangeNotifier {
   AudioTrack? get currentTrack => _currentTrack;
   AudioTrack? get pendingTrack => _pendingTrack;
   AudioTrack? get activeDisplayTrack => _pendingTrack ?? _currentTrack;
+  bool get _usingNativeOnlinePlayer => _currentTrack?.isRemote == true || _pendingTrack?.isRemote == true;
+  bool get isPlaybackPlaying => _usingNativeOnlinePlayer ? _nativeOnlinePlaying : player.playing;
+  Duration get playbackPosition => _usingNativeOnlinePlayer ? _nativeOnlinePosition : player.position;
+  Duration get playbackBufferedPosition => _usingNativeOnlinePlayer ? _nativeOnlineBufferedPosition : player.bufferedPosition;
+  Duration get playbackDuration {
+    if (_usingNativeOnlinePlayer) {
+      if (_nativeOnlineDuration > Duration.zero) return _nativeOnlineDuration;
+      final trackDuration = activeDisplayTrack?.duration ?? Duration.zero;
+      return trackDuration;
+    }
+    return player.duration ?? activeDisplayTrack?.duration ?? Duration.zero;
+  }
+  Stream<Duration> get playbackPositionStream => _usingNativeOnlinePlayer ? _nativePositionController.stream : player.positionStream;
+  Stream<Duration?> get playbackDurationStream => _usingNativeOnlinePlayer ? _nativeDurationController.stream : player.durationStream;
   int get currentIndex => _currentIndex;
   bool get isLoading => _isLoading;
   bool get hasPermission => _hasPermission;
@@ -1137,7 +1239,10 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   Future<void> _refreshWakeLockForPlaybackAndDownloads() async {
     final processingState = player.processingState;
-    final shouldHoldWakeLock = player.playing ||
+    final nativeBusy = _usingNativeOnlinePlayer &&
+        (_nativeOnlinePlaying || _nativeOnlinePlayWhenReady || _nativeOnlineState == 'buffering' || _isPreparingTrack);
+    final shouldHoldWakeLock = nativeBusy ||
+        player.playing ||
         _downloadInProgress.isNotEmpty ||
         processingState == ProcessingState.loading ||
         processingState == ProcessingState.buffering;
@@ -2244,59 +2349,75 @@ class MusicPlayerProvider extends ChangeNotifier {
     final safeTargetIndex = targetQueueIndex >= 0 ? targetQueueIndex : 0;
     final selectedLibraryKey = track.libraryKey;
     final selectionGeneration = ++_trackLoadGeneration;
+    final videoId = (track.videoId ?? track.id).trim();
+
+    if (videoId.isEmpty) {
+      _error = 'Faixa online sem videoId para o player nativo do Metrolist.';
+      notifyListeners();
+      return;
+    }
 
     _isRecoveringRemoteSource = false;
     _lastRecoveredRemoteTrackKey = null;
     _remoteProxyFallbackKeys.clear();
+
+    // Online não usa just_audio: pare o player Flutter para não existir duas
+    // engines de áudio. O áudio online vai direto para o ExoPlayer nativo do
+    // MetrolistNativePlayer.
     try {
       await player.stop().timeout(const Duration(milliseconds: 350));
     } catch (_) {}
 
-    _remoteProxyFallbackKeys.remove(track.libraryKey);
     _pendingTrack = track;
     _currentTrack = track;
     _queue = List<AudioTrack>.from(pendingQueue);
     _currentIndex = safeTargetIndex;
+    _manualRemoteQueueMode = true;
+    _nativeOnlineDuration = track.duration;
+    _nativeOnlinePosition = Duration.zero;
+    _nativeOnlineBufferedPosition = Duration.zero;
     _error = null;
     _isPreparingTrack = true;
     notifyListeners();
-    // Warm the exact Metrolist native stream as soon as the user taps.
-    // Wait only a tiny moment: when the stream is already cached this makes
-    // playback start instantly; when it is cold we do not block the tap.
-    final tapWarmup = _prewarmMetrolistStream(track);
-    await tapWarmup.timeout(const Duration(milliseconds: 1200), onTimeout: () {});
-    if (selectionGeneration != _trackLoadGeneration || _currentTrack?.libraryKey != selectedLibraryKey) {
-      return;
-    }
 
     try {
-      await _prepareTrackInternal(
-        track,
-        queue: pendingQueue,
-        queueIndex: safeTargetIndex,
-      );
-      if (_currentTrack?.libraryKey != selectedLibraryKey) {
+      final state = await _invokeNativePlayer('nativePlay', <String, dynamic>{
+        'videoId': videoId,
+        'quality': 'AUTO',
+        'title': track.title,
+        'artist': track.artist,
+        'album': track.album,
+        'artworkUrl': _highQualityArtworkUrl(track.artworkUrl ?? ''),
+        'durationMs': track.durationMs,
+      }).timeout(const Duration(seconds: 6));
+
+      if (selectionGeneration != _trackLoadGeneration || _currentTrack?.libraryKey != selectedLibraryKey) {
         return;
       }
-      final resolvedTarget = _currentTrack ?? track;
+
+      _applyNativePlayerState(state, notify: false);
       _pendingTrack = null;
-      await _startPlayback();
-      unawaited(_rememberOnlineTrack(resolvedTarget));
-      unawaited(_rememberPlaybackHistory(resolvedTarget));
+      _currentTrack = track.copyWith(videoId: videoId);
+      _isPreparingTrack = false;
+      _error = null;
+      _startNativeStatePolling();
+      unawaited(_syncNotificationQueue(_queue, _currentIndex, currentTrack: _currentTrack!));
+      unawaited(_rememberOnlineTrack(_currentTrack!));
+      unawaited(_rememberPlaybackHistory(_currentTrack!));
+      // Cache do Innertube para as próximas faixas, mas sem bloquear o clique.
       if (pendingQueue.length > 1) {
         for (var offset = 1; offset <= 2 && offset < pendingQueue.length; offset++) {
           final next = pendingQueue[(safeTargetIndex + offset) % pendingQueue.length];
           unawaited(_prewarmMetrolistStream(next));
         }
       }
+      await _persistCurrentTrack();
       notifyListeners();
     } catch (e) {
       if (_currentTrack?.libraryKey == selectedLibraryKey || _pendingTrack?.libraryKey == selectedLibraryKey) {
-        _error = null;
-        await _handlePlaybackException(e);
         _isPreparingTrack = false;
         _pendingTrack = null;
-        _error = null;
+        _error = 'Falha no player nativo do Metrolist: $e';
         notifyListeners();
       }
     }
@@ -2682,6 +2803,18 @@ class MusicPlayerProvider extends ChangeNotifier {
     int queueIndex = -1,
     int autoSeekMs = 0,
   }) async {
+    if (track.isRemote) {
+      await playOnlineTrack(track, queue: queue ?? (_queue.isNotEmpty ? _queue : <AudioTrack>[track]));
+      if (autoSeekMs > 0) {
+        await seek(Duration(milliseconds: autoSeekMs));
+      }
+      return;
+    }
+
+    if (_nativeStatePoller != null || _nativeOnlinePlaying || _nativeOnlinePlayWhenReady) {
+      await _stopNativeOnlinePlayback(reset: true);
+    }
+
     final generation = ++_trackLoadGeneration;
 
     if (queue != null) {
@@ -2802,39 +2935,9 @@ class MusicPlayerProvider extends ChangeNotifier {
     }
 
     if (track.isRemote) {
-      // Online agora é 100% Metrolist nativo: sem proxy Dart,
-      // O Flutter só entrega o videoId para o Innertube/YTPlayerUtils copiado do Metrolist antigo.
-      final resolvedTrack = await _resolveMetrolistStream(
-        track,
-        forceRefresh: _remoteProxyFallbackKeys.contains(track.libraryKey),
-      );
-      if (generation != null && generation != _trackLoadGeneration) return;
-      final rawUrl = (resolvedTrack.remoteStreamUri ?? resolvedTrack.uri).trim();
-      final remoteUri = Uri.tryParse(rawUrl);
-      if (remoteUri == null || !(remoteUri.scheme == 'http' || remoteUri.scheme == 'https')) {
-        throw Exception('Innertube do Metrolist não devolveu uma URL googlevideo válida');
-      }
-
-      await _serializeAudioSourceLoad(() async {
-        if (generation != null && generation != _trackLoadGeneration) return;
-        await player.setAudioSource(
-          await _audioSourceForUri(remoteUri, resolvedTrack),
-          preload: false,
-        );
-      });
-      if (generation != null && generation != _trackLoadGeneration) return;
-
-      _manualRemoteQueueMode = true;
-      _queue = List<AudioTrack>.from(queue);
-      if (requestedQueueIndex >= 0 && requestedQueueIndex < _queue.length) {
-        _queue[requestedQueueIndex] = resolvedTrack;
-      }
-      _currentIndex = requestedQueueIndex;
-      _currentTrack = resolvedTrack;
-      _pendingTrack = null;
-      _isPreparingTrack = false;
-      await _applyRepeatModeToPlayer();
-      unawaited(_syncNotificationQueue(_queue, _currentIndex, currentTrack: resolvedTrack));
+      // Segurança: faixa online não deve cair no just_audio. O caminho online
+      // oficial deste app agora é MetrolistNativePlayer/nativePlay.
+      await playOnlineTrack(track, queue: queue);
       return;
     }
 
@@ -3158,13 +3261,10 @@ class MusicPlayerProvider extends ChangeNotifier {
     );
   }
 
-  /// Prepares an online track immediately when selected (for immediate loading)
+  /// Prepares/starts an online track through the native Metrolist player.
   Future<void> prepareOnlineTrack(AudioTrack track) async {
     if (!track.isRemote) return;
-    await _prepareTrackInternal(
-      track,
-      autoSeekMs: 0,
-    );
+    await playOnlineTrack(track, queue: _queue.isNotEmpty ? _queue : <AudioTrack>[track]);
   }
 
   Future<void> playTrack(AudioTrack track, {List<AudioTrack>? queue}) async {
@@ -3180,6 +3280,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       await playOnlineTrack(track, queue: queue);
       return;
     }
+    await _stopNativeOnlinePlayback(reset: true);
     final effectiveQueue = _dedupeTracks(queue ?? (_queue.isNotEmpty ? _queue : _tracks));
     if (effectiveQueue.isEmpty) return;
 
@@ -3210,6 +3311,18 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> togglePlayback() async {
+    if (_currentTrack?.isRemote == true) {
+      if (_nativeOnlinePlaying || _nativeOnlinePlayWhenReady) {
+        _applyNativePlayerState(await _invokeNativePlayer('nativePause'), notify: false);
+      } else {
+        _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
+        _startNativeStatePolling();
+      }
+      await _persistCurrentTrack();
+      notifyListeners();
+      return;
+    }
+
     if (_currentTrack == null || player.audioSource == null) {
       final target = _currentTrack;
       if (target != null) {
@@ -3236,6 +3349,18 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   List<AudioTrack> get _activeQueue => _queue.isNotEmpty ? _queue : _tracks;
 
+  Future<void> _playQueueItem(List<AudioTrack> queue, int index) async {
+    if (index < 0 || index >= queue.length) return;
+    final target = queue[index];
+    if (target.isRemote) {
+      await playOnlineTrack(target, queue: queue);
+      return;
+    }
+    await _stopNativeOnlinePlayback(reset: true);
+    await _prepareTrackInternal(target, queue: queue, queueIndex: index);
+    await _startPlayback();
+  }
+
   Future<void> previousTrack({bool wrap = true}) async {
     final queue = _repeatMode == RepeatMode.album && _currentTrack != null
         ? albumTracksFor(_currentTrack!.albumGroupKey)
@@ -3244,8 +3369,7 @@ class MusicPlayerProvider extends ChangeNotifier {
 
     if (_shuffleEnabled && queue.length > 1) {
       final randomIndex = Random().nextInt(queue.length);
-      await _prepareTrackInternal(queue[randomIndex], queue: queue, queueIndex: randomIndex);
-      await _startPlayback();
+      await _playQueueItem(queue, randomIndex);
       return;
     }
 
@@ -3254,18 +3378,16 @@ class MusicPlayerProvider extends ChangeNotifier {
         : queue.indexWhere((track) => track.libraryKey == _currentTrack!.libraryKey);
     if (currentQueueIndex <= 0) {
       if (!wrap) {
-        await player.seek(Duration.zero);
+        await seek(Duration.zero);
         notifyListeners();
         return;
       }
-      await _prepareTrackInternal(queue.last, queue: queue, queueIndex: queue.length - 1);
-      await _startPlayback();
+      await _playQueueItem(queue, queue.length - 1);
       return;
     }
 
     final targetIndex = currentQueueIndex - 1;
-    await _prepareTrackInternal(queue[targetIndex], queue: queue, queueIndex: targetIndex);
-    await _startPlayback();
+    await _playQueueItem(queue, targetIndex);
   }
 
   Future<bool> nextTrack({bool wrap = true}) async {
@@ -3276,8 +3398,7 @@ class MusicPlayerProvider extends ChangeNotifier {
 
     if (_shuffleEnabled && queue.length > 1) {
       final randomIndex = Random().nextInt(queue.length);
-      await _prepareTrackInternal(queue[randomIndex], queue: queue, queueIndex: randomIndex);
-      await _startPlayback();
+      await _playQueueItem(queue, randomIndex);
       return true;
     }
 
@@ -3285,33 +3406,47 @@ class MusicPlayerProvider extends ChangeNotifier {
         ? -1
         : queue.indexWhere((track) => track.libraryKey == _currentTrack!.libraryKey);
     if (currentQueueIndex == -1) {
-      await _prepareTrackInternal(queue.first, queue: queue, queueIndex: 0);
-      await _startPlayback();
+      await _playQueueItem(queue, 0);
       return true;
     }
 
     if (currentQueueIndex >= queue.length - 1) {
       if (!wrap) {
-        await player.pause();
-        final duration = player.duration;
-        if (duration != null) {
-          await player.seek(duration);
+        if (_currentTrack?.isRemote == true) {
+          await _invokeNativePlayer('nativePause');
+          _nativeOnlinePlaying = false;
+        } else {
+          await player.pause();
+          final duration = player.duration;
+          if (duration != null) {
+            await player.seek(duration);
+          }
         }
         notifyListeners();
         return false;
       }
-      await _prepareTrackInternal(queue.first, queue: queue, queueIndex: 0);
-      await _startPlayback();
+      await _playQueueItem(queue, 0);
       return true;
     }
 
     final targetIndex = currentQueueIndex + 1;
-    await _prepareTrackInternal(queue[targetIndex], queue: queue, queueIndex: targetIndex);
-    await _startPlayback();
+    await _playQueueItem(queue, targetIndex);
     return true;
   }
 
   Future<void> _startPlayback() async {
+    if (_currentTrack?.isRemote == true) {
+      try {
+        _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
+        _startNativeStatePolling();
+        _error = null;
+      } catch (error) {
+        _error = 'Falha ao retomar o player nativo do Metrolist: $error';
+      }
+      notifyListeners();
+      return;
+    }
+
     try {
       // just_audio's play() future may stay pending until playback stops. Do not
       // await it here, otherwise every tap can keep the app in a long loading
@@ -3413,8 +3548,6 @@ class MusicPlayerProvider extends ChangeNotifier {
       return;
     }
 
-    _remoteProxyFallbackKeys.add(track.libraryKey);
-
     if (_isRecoveringRemoteSource) {
       return;
     }
@@ -3422,56 +3555,18 @@ class MusicPlayerProvider extends ChangeNotifier {
     _isRecoveringRemoteSource = true;
     _lastRecoveredRemoteTrackKey = track.libraryKey;
     try {
-      var baseTrack = track;
-      for (var attempt = 0; attempt < 6; attempt++) {
-        _markRemoteStreamFailure(baseTrack);
-        AudioTrack refreshedTrack;
-        try {
-          refreshedTrack = await _resolveMetrolistStream(baseTrack, forceRefresh: true).timeout(
-            const Duration(seconds: 8),
-            onTimeout: () => throw Exception('Timeout ao renovar stream'),
-          );
-        } catch (_) {
-          continue;
-        }
-
-        final queueIndex = _queue.indexWhere((item) => item.libraryKey == track.libraryKey);
-        if (queueIndex >= 0 && queueIndex < _queue.length) {
-          _queue[queueIndex] = refreshedTrack;
-        }
-        _currentTrack = refreshedTrack;
-        _pendingTrack = refreshedTrack;
-        _error = null;
-        _isPreparingTrack = true;
-        notifyListeners();
-
-        try {
-          _remoteProxyFallbackKeys.add(refreshedTrack.libraryKey);
-          await _setBestAudioSource(refreshedTrack).timeout(
-            const Duration(seconds: 7),
-            onTimeout: () => throw Exception('Timeout ao preparar stream renovado'),
-          );
-          unawaited(
-            player.play().catchError((Object playError, StackTrace stackTrace) {
-              unawaited(_handleAsyncPlaybackError(playError));
-            }),
-          );
-          _pendingTrack = null;
-          _isPreparingTrack = false;
-          _error = null;
-          return;
-        } catch (_) {
-          baseTrack = refreshedTrack;
-          _markRemoteStreamFailure(refreshedTrack);
-        }
+      final videoId = (track.videoId ?? track.id).trim();
+      if (videoId.isNotEmpty) {
+        await _invokeNativePlayer('nativeInvalidate', <String, dynamic>{'videoId': videoId});
       }
-
-      // Do not surface ExoPlayer's generic "Source error" to the UI. Keep the
-      // player screen open and let the user tap again or skip while cached
-      // stream failures are already invalidated for the next attempt.
-      _pendingTrack = null;
-      _isPreparingTrack = false;
+      final resumePosition = _nativeOnlinePosition;
+      await playOnlineTrack(track, queue: _queue.isNotEmpty ? _queue : <AudioTrack>[track]);
+      if (resumePosition > const Duration(seconds: 2)) {
+        await seek(resumePosition);
+      }
       _error = null;
+    } catch (e) {
+      _error = 'Falha ao recuperar o player nativo do Metrolist: $e';
     } finally {
       _isRecoveringRemoteSource = false;
       notifyListeners();
@@ -3479,6 +3574,15 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
+    if (_currentTrack?.isRemote == true) {
+      _applyNativePlayerState(
+        await _invokeNativePlayer('nativeSeek', <String, dynamic>{'positionMs': position.inMilliseconds}),
+        notify: false,
+      );
+      await _persistCurrentTrack();
+      notifyListeners();
+      return;
+    }
     await player.seek(position);
     await _persistCurrentTrack();
     notifyListeners();
@@ -3487,7 +3591,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   Future<void> _persistCurrentTrack() async {
     if (_currentTrack == null) return;
     await _prefs?.setString(_lastTrackIdKey, _currentTrack!.libraryKey);
-    await _prefs?.setInt(_lastPositionKey, player.position.inMilliseconds);
+    await _prefs?.setInt(_lastPositionKey, playbackPosition.inMilliseconds);
   }
 
   void _handleCurrentIndexChanged(int? index) {
@@ -3513,6 +3617,11 @@ class MusicPlayerProvider extends ChangeNotifier {
   void _handlePlayerState(PlayerState state) {
     if (!_bootstrapped) {
       notifyListeners();
+      return;
+    }
+
+    if (_currentTrack?.isRemote == true) {
+      unawaited(_refreshWakeLockForPlaybackAndDownloads());
       return;
     }
 

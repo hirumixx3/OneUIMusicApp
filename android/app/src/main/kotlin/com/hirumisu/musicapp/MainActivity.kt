@@ -116,6 +116,41 @@ class MainActivity : AudioServiceActivity() {
                             MetrolistStreamResolver.prewarm(applicationContext, videoId, quality)
                         }
                     }
+                    "nativePlay" -> {
+                        val args = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                            MetrolistNativePlayer.play(applicationContext, args)
+                        }
+                    }
+                    "nativePause" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        MetrolistNativePlayer.pause()
+                    }
+                    "nativeResume" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        MetrolistNativePlayer.resume()
+                    }
+                    "nativeSeek" -> {
+                        val rawPosition = call.argument<Any>("positionMs")
+                        val positionMs = when (rawPosition) {
+                            is Number -> rawPosition.toLong()
+                            is String -> rawPosition.toLongOrNull() ?: 0L
+                            else -> 0L
+                        }
+                        runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                            MetrolistNativePlayer.seek(positionMs)
+                        }
+                    }
+                    "nativeStop" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        MetrolistNativePlayer.stop()
+                    }
+                    "nativeState" -> runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        MetrolistNativePlayer.state()
+                    }
+                    "nativeInvalidate" -> {
+                        val videoId = call.argument<String>("videoId") ?: ""
+                        runAsync(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                            MetrolistNativePlayer.invalidate(videoId)
+                        }
+                    }
 
                     // ── catalog ────────────────────────────────────────────────
                     "home" -> runAsync(result, "METROLIST_HOME_ERROR") {

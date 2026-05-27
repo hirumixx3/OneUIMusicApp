@@ -10,6 +10,7 @@ import com.metrolist.innertube.models.response.PlayerResponse
 import com.metrolist.music.constants.AudioQuality
 import com.metrolist.music.utils.YTPlayerUtils
 import com.metrolist.music.utils.cipher.CipherDeobfuscator
+import com.metrolist.music.utils.sabr.EjsNTransformSolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -114,9 +115,10 @@ object MetrolistStreamResolver {
             .getOrDefault(AudioQuality.AUTO)
         if (forceRefresh) invalidate(safeVideoId)
 
-        // Return immediately. The native local stream opens the real googlevideo
-        // URL only when ExoPlayer requests bytes, matching Metrolist's
-        // ResolvingDataSource flow and avoiding Flutter-side stream services.
+        // Return the local Metrolist stream URL immediately. The native local
+        // server resolves/refreshes the real googlevideo URL only when ExoPlayer
+        // requests bytes, just like Metrolist's lazy DataSource flow. This keeps
+        // the tap responsive instead of blocking the UI on Innertube validation.
         val localUrl = MetrolistNativeStreamServer.urlFor(
             context.applicationContext,
             safeVideoId,
@@ -131,7 +133,7 @@ object MetrolistStreamResolver {
             "expiresInSeconds" to 1800,
             "durationMs" to 0L,
             "title" to "",
-            "source" to "metrolist_native_chunked_resolver",
+            "source" to "metrolist_native_lazy_chunked_resolver",
         )
     }
 
@@ -370,15 +372,21 @@ object MetrolistStreamResolver {
         val hasNParam = Regex("[?&]n=").containsMatchIn(url)
         if (!hasNParam) return url
 
-        val transformed = runCatching { CipherDeobfuscator.transformNParamInUrl(url) }
-            .onFailure { Timber.tag(TAG).w(it, "n-transform failed; rejecting throttled URL") }
+        var transformed = runCatching { CipherDeobfuscator.transformNParamInUrl(url) }
+            .onFailure { Timber.tag(TAG).w(it, "n-transform failed with CipherDeobfuscator") }
             .getOrNull()
-            ?: return null
+
+        if (transformed == null || transformed == url) {
+            Timber.tag(TAG).w("Cipher n-transform did not change the URL; trying Metrolist EJS solver")
+            transformed = runCatching { EjsNTransformSolver.transformNParamInUrl(url) }
+                .onFailure { Timber.tag(TAG).w(it, "n-transform failed with EJS solver") }
+                .getOrNull()
+        }
 
         // If n= is still identical, the player JS transform was not actually applied.
         // Those URLs are exactly the ones that pass the first bytes and then return
         // HTTP 403 around 1 MB, which is why tracks stopped in the middle.
-        if (transformed == url) {
+        if (transformed == null || transformed == url) {
             Timber.tag(TAG).w("n-transform returned the original URL; rejecting throttled URL")
             return null
         }

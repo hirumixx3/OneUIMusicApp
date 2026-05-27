@@ -394,9 +394,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
             child: StreamBuilder<Duration?>(
-              stream: provider.player.durationStream,
+              stream: provider.playbackDurationStream,
               builder: (context, durationSnapshot) {
-                final totalDuration = durationSnapshot.data ?? provider.player.duration ?? track.duration;
+                final totalDuration = durationSnapshot.data ?? provider.playbackDuration;
                 final trackDetails = _detailsFor(track, totalDuration);
 
                 return Column(
@@ -644,9 +644,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                       ),
                     StreamBuilder<Duration>(
-                      stream: provider.player.positionStream,
+                      stream: provider.playbackPositionStream,
                       builder: (context, snapshot) {
-                        final position = snapshot.data ?? provider.player.position;
+                        final position = snapshot.data ?? provider.playbackPosition;
                         final max = totalDuration.inMilliseconds <= 0
                             ? 1.0
                             : totalDuration.inMilliseconds.toDouble();
@@ -702,7 +702,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                           onPressed: provider.togglePlayback,
                           child: Icon(
-                            provider.player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                            provider.isPlaybackPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                             size: 42,
                           ),
                         ),
@@ -902,7 +902,7 @@ class _LyricsArtworkCard extends StatelessWidget {
                     ),
                   )
                 : StreamBuilder<Duration>(
-                    stream: context.read<music_provider.MusicPlayerProvider>().player.positionStream,
+                    stream: context.read<music_provider.MusicPlayerProvider>().playbackPositionStream,
                     builder: (context, snapshot) {
                       final position = snapshot.data ?? Duration.zero;
                       var active = 0;
