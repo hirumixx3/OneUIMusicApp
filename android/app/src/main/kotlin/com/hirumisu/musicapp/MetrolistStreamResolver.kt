@@ -542,16 +542,12 @@ private object MetrolistNativeStreamServer {
 
         var playback = MetrolistStreamResolver.resolvePlaybackForProxy(context, videoId, quality, forceRefresh)
 
-        // IMPORTANT: the local HTTP server must speak normal HTTP to ExoPlayer.
-        // The previous build answered "Range: bytes=0-" with only a 512 KB
-        // partial response. That is valid for an internal DataSource, but not
-        // for an HTTP URL handed to just_audio/ExoPlayer: ExoPlayer can sit at
-        // 00:00 or treat the short partial response as the whole media.
-        //
-        // This server now responds with the real requested range length when it
-        // knows the total, but fetches googlevideo internally in small Metrolist
-        // chunks. So playback starts, seeking works, and upstream 403/early EOF
-        // can be retried without lying to ExoPlayer about Content-Range.
+        // The local HTTP server mirrors Metrolist's playback core: resolve the
+        // fresh googlevideo URL through Innertube/YTPlayerUtils, then serve the
+        // player in small byte chunks. The HTTP response exposes exactly the
+        // chunk it is serving, with honest Content-Range, so ExoPlayer keeps
+        // requesting the next chunk instead of hanging at 00:00 or stopping when
+        // googlevideo closes a long read halfway through a song.
         val firstChunkEnd = requestedEnd?.let { min(it, safeStart + CHUNK_LENGTH - 1) }
             ?: (safeStart + CHUNK_LENGTH - 1)
         val opened = openChunkWithRefresh(context, videoId, quality, playback, safeStart, firstChunkEnd)
@@ -573,13 +569,19 @@ private object MetrolistNativeStreamServer {
                         playback.contentLength?.takeIf { it > 0L },
                     ).firstOrNull()
 
+                    // Match Metrolist's ResolvingDataSource behavior: every upstream
+                    // request is a small CHUNK_LENGTH subrange. For HTTP/ExoPlayer we must
+                    // also expose the response as that same small partial range; otherwise
+                    // the player can wait for bytes we intentionally did not fetch yet or
+                    // stop when a googlevideo connection closes mid-track.
+                    val localChunkEnd = safeStart + CHUNK_LENGTH - 1
                     val responseEnd = when {
-                        requestedEnd != null && totalLength != null -> min(requestedEnd, totalLength - 1)
-                        requestedEnd != null -> requestedEnd
-                        totalLength != null -> totalLength - 1
-                        else -> null
+                        requestedEnd != null && totalLength != null -> min(min(requestedEnd, localChunkEnd), totalLength - 1)
+                        requestedEnd != null -> min(requestedEnd, localChunkEnd)
+                        totalLength != null -> min(localChunkEnd, totalLength - 1)
+                        else -> localChunkEnd
                     }
-                    val responseLength = responseEnd?.let { end -> (end - safeStart + 1).coerceAtLeast(0L) }
+                    val responseLength = (responseEnd - safeStart + 1).coerceAtLeast(0L)
 
                     val outHeaders = linkedMapOf(
                         "Content-Type" to contentType,
@@ -590,15 +592,15 @@ private object MetrolistNativeStreamServer {
                         "X-Metrolist-Itag" to playback.itag.toString(),
                     )
 
-                    if (hasRange && totalLength != null && responseEnd != null) {
-                        outHeaders["Content-Range"] = "bytes $safeStart-$responseEnd/$totalLength"
+                    if (hasRange) {
+                        outHeaders["Content-Range"] = "bytes $safeStart-$responseEnd/${totalLength?.toString() ?: "*"}"
                         outHeaders["Content-Length"] = responseLength.toString()
                         writeHeaders(output, 206, "Partial Content", outHeaders)
                     } else {
-                        // If size is unknown, do not invent 512 KB as Content-Length.
-                        // Let ExoPlayer read until close. This path is mostly a safety
-                        // fallback; YouTube audio formats usually expose contentLength.
-                        if (!hasRange && totalLength != null && safeStart == 0L) {
+                        // Initial non-range requests are allowed to stream continuously.
+                        // Once ExoPlayer starts seeking/range loading, the branch above
+                        // gives it Metrolist-sized chunks with honest Content-Range.
+                        if (totalLength != null && safeStart == 0L) {
                             outHeaders["Content-Length"] = totalLength.toString()
                         }
                         writeHeaders(output, 200, "OK", outHeaders)
@@ -613,19 +615,15 @@ private object MetrolistNativeStreamServer {
                     var written = 0L
                     var emptyReads = 0
 
-                    val firstLimit = when {
-                        responseEnd != null -> min(firstChunkEnd, responseEnd) - safeStart + 1
-                        else -> firstChunkEnd - safeStart + 1
-                    }.coerceAtLeast(0L)
+                    val firstLimit = (min(firstChunkEnd, responseEnd) - safeStart + 1).coerceAtLeast(0L)
 
                     val firstCopied = copyResponseBodyLimited(body, output, firstLimit)
                     written += firstCopied
                     nextStart += firstCopied
                     output.flush()
 
-                    while (emptyReads < 5 && (responseEnd == null || nextStart <= responseEnd)) {
-                        val nextEnd = responseEnd?.let { min(nextStart + CHUNK_LENGTH - 1, it) }
-                            ?: (nextStart + CHUNK_LENGTH - 1)
+                    while (emptyReads < 5 && nextStart <= responseEnd) {
+                        val nextEnd = min(nextStart + CHUNK_LENGTH - 1, responseEnd)
                         if (nextEnd < nextStart) break
 
                         val nextOpened = openChunkWithRefresh(context, videoId, quality, playback, nextStart, nextEnd)
@@ -655,10 +653,7 @@ private object MetrolistNativeStreamServer {
                             continue
                         }
 
-                        val limit = when {
-                            responseEnd != null -> min(nextEnd, responseEnd) - nextStart + 1
-                            else -> nextEnd - nextStart + 1
-                        }.coerceAtLeast(0L)
+                        val limit = (min(nextEnd, responseEnd) - nextStart + 1).coerceAtLeast(0L)
 
                         val copied = nextResponse.use { copyResponseBodyLimited(nextBody, output, limit) }
                         output.flush()
@@ -671,13 +666,12 @@ private object MetrolistNativeStreamServer {
                         written += copied
                         nextStart += copied
 
-                        // Only unknown-length streams can use a short chunk as EOF.
-                        // Known-length streams must keep resuming from nextStart so a
-                        // flaky googlevideo read does not chop the music in the middle.
-                        if (responseEnd == null && copied < limit) break
+                        // The local HTTP response is one honest Metrolist-sized range.
+                        // If upstream closes early, resume until this declared range is full.
+                        if (copied < limit && nextStart > responseEnd) break
                     }
 
-                    if (responseLength != null && written < responseLength) {
+                    if (written < responseLength) {
                         Timber.tag(TAG).w(
                             "Local stream closed before full declared range for %s. written=%s expected=%s start=%s end=%s",
                             videoId,
