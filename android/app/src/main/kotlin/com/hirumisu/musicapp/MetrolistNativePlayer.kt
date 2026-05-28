@@ -33,10 +33,7 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.extractor.Extractor
-import androidx.media3.extractor.ExtractorsFactory
-import androidx.media3.extractor.mkv.MatroskaExtractor
-import androidx.media3.extractor.mp4.FragmentedMp4Extractor
+import androidx.media3.extractor.DefaultExtractorsFactory
 import com.metrolist.innertube.YouTube
 import com.metrolist.music.constants.AudioQuality
 import com.metrolist.music.utils.YTPlayerUtils
@@ -219,9 +216,7 @@ object MetrolistNativePlayer {
     private fun createMediaSourceFactory(context: Context) =
         DefaultMediaSourceFactory(
             createDataSourceFactory(context),
-            ExtractorsFactory {
-                arrayOf<Extractor>(MatroskaExtractor(), FragmentedMp4Extractor())
-            },
+            DefaultExtractorsFactory(),
         )
 
     private fun isDirectLocalOrHttp(dataSpecUri: Uri): Boolean {
