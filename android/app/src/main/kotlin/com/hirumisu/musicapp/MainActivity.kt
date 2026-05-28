@@ -150,6 +150,18 @@ class MainActivity : AudioServiceActivity() {
                             MetrolistNativePlayer.invalidate(videoId)
                         }
                     }
+                    "nativeUpdateOptions" -> {
+                        val args = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                            MetrolistNativePlayer.updateOptions(args)
+                        }
+                    }
+                    "nativeNext" -> runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        MetrolistNativePlayer.skipToNext()
+                    }
+                    "nativePrevious" -> runOnMain(result, "METROLIST_NATIVE_PLAYER_ERROR") {
+                        MetrolistNativePlayer.skipToPrevious()
+                    }
 
                     // ── catalog ────────────────────────────────────────────────
                     "home" -> runAsync(result, "METROLIST_HOME_ERROR") {

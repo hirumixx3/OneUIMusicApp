@@ -1222,7 +1222,10 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                 );
               },
             );
-    } else if (provider.isOnlineLoading) {
+    } else if (provider.isOnlineLoading &&
+        provider.onlineDisplaySongs.isEmpty &&
+        provider.onlineDisplayArtists.isEmpty &&
+        provider.onlineDisplayPlaylists.isEmpty) {
       content = const Center(child: CircularProgressIndicator());
     } else if (provider.onlineError != null &&
         provider.onlineSongs.isEmpty &&
@@ -1416,7 +1419,14 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
   }) {
     final featuredSongs = songs.take(12).toList(growable: false);
     final pickSongs = songs.skip(12).take(24).toList(growable: false);
-    final moodChips = const ['Podcasts', 'Para dormir', 'Relax', 'Romance', 'Treino', 'K-pop'];
+    final moodChips = const <String, String>{
+      'Podcasts': 'podcasts música Brasil',
+      'Para dormir': 'músicas para dormir',
+      'Relax': 'relax music',
+      'Romance': 'músicas românticas',
+      'Treino': 'músicas para treino',
+      'K-pop': 'k-pop hits',
+    };
     return CustomScrollView(
       key: const PageStorageKey('online_youtube_music_home'),
       controller: _controller,
@@ -1434,7 +1444,20 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                     scrollDirection: Axis.horizontal,
                     itemCount: moodChips.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, index) => _YoutubeMusicChip(label: moodChips[index]),
+                    itemBuilder: (context, index) {
+                      final label = moodChips.keys.elementAt(index);
+                      final query = moodChips[label]!;
+                      return _YoutubeMusicChip(
+                        label: label,
+                        onTap: () {
+                          provider.searchController.text = query;
+                          provider.searchController.selection = TextSelection.collapsed(offset: query.length);
+                          setState(() => _sectionIndex = 0);
+                          provider.setOnlineSectionIndex(0);
+                          provider.searchOnline(forceQuery: query, refresh: true);
+                        },
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 26),
@@ -1595,22 +1618,30 @@ class _AppAdaptiveIcon extends StatelessWidget {
 }
 
 class _YoutubeMusicChip extends StatelessWidget {
-  const _YoutubeMusicChip({required this.label});
+  const _YoutubeMusicChip({required this.label, required this.onTap});
 
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.08),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(14),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ),
       ),
     );
   }

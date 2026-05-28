@@ -65,5 +65,9 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".MetrolistPlayerActionReceiver"
+            android:exported="false" />
+
     </application>
 </manifest>

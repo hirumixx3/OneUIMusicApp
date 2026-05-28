@@ -12,7 +12,10 @@ import com.metrolist.innertube.models.YTItem
 import com.metrolist.innertube.models.filterVideoSongs
 import com.metrolist.music.utils.cipher.CipherDeobfuscator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -42,28 +45,34 @@ object MetrolistOnlineBridge {
 
     fun home(context: Context): Map<String, Any?> = runBlocking(Dispatchers.IO) {
         ensureInitialized(context)
-        val collected = mutableListOf<YTItem>()
-        runCatching {
-            val page = YouTube.home().getOrThrow()
-            collected += page.sections.flatMap { it.items }
-        }
         val seeds = listOf(
-            "new music",
-            "top songs brasil",
-            "kpop hits",
+            "top músicas brasil",
+            "lançamentos brasil",
+            "músicas virais",
+            "sertanejo hits",
+            "funk atual",
             "pop hits",
+            "kpop hits",
             "relax music",
             "playlist brasil",
         )
-        for (seed in seeds) {
-            if (collected.filterIsInstance<SongItem>().size >= 40 &&
-                collected.filterIsInstance<PlaylistItem>().size >= 10 &&
-                collected.filterIsInstance<ArtistItem>().size >= 10) break
-            runCatching {
-                val summary = YouTube.searchSummary(seed).getOrThrow()
-                collected += summary.summaries.flatMap { it.items }
+        val homeDeferred = async {
+            withTimeoutOrNull(4500L) {
+                runCatching { YouTube.home().getOrThrow().sections.flatMap { it.items } }.getOrDefault(emptyList<YTItem>())
+            } ?: emptyList<YTItem>()
+        }
+        val seedDeferred = seeds.map { seed ->
+            async {
+                withTimeoutOrNull(4500L) {
+                    runCatching { YouTube.searchSummary(seed).getOrThrow().summaries.flatMap { it.items } }.getOrDefault(emptyList<YTItem>())
+                } ?: emptyList<YTItem>()
             }
         }
+        val collected = mutableListOf<YTItem>()
+        collected += homeDeferred.await()
+        // Busca paralela: evita a tela Online ficar vazia/lenta quando home()
+        // devolve pouco conteúdo ou demora em algumas contas/regiões.
+        seedDeferred.awaitAll().forEach { collected += it }
         searchResultMap(collected.dedupeItems())
     }
 

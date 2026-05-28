@@ -260,6 +260,48 @@ class MusicPlayerProvider extends ChangeNotifier {
     return Duration(milliseconds: ms < 0 ? 0 : ms);
   }
 
+  bool _trackMatchesNativeMediaId(AudioTrack track, String mediaId) {
+    final key = mediaId.trim().toLowerCase();
+    if (key.isEmpty) return false;
+    return track.libraryKey.toLowerCase() == key ||
+        track.id.toLowerCase() == key ||
+        (track.videoId ?? '').toLowerCase() == key ||
+        'remote:${(track.videoId ?? track.id).toLowerCase()}' == key;
+  }
+
+  void _syncCurrentTrackFromNativeState(Map<String, dynamic> state) {
+    final mediaId = '${state['mediaId'] ?? ''}'.trim();
+    final queueIndexRaw = state['queueIndex'];
+    final queueIndex = queueIndexRaw is num ? queueIndexRaw.toInt() : int.tryParse('$queueIndexRaw') ?? -1;
+    if (_queue.isEmpty) return;
+
+    AudioTrack? nativeTrack;
+    int nativeIndex = -1;
+    if (queueIndex >= 0 && queueIndex < _queue.length) {
+      final candidate = _queue[queueIndex];
+      if (mediaId.isEmpty || _trackMatchesNativeMediaId(candidate, mediaId)) {
+        nativeTrack = candidate;
+        nativeIndex = queueIndex;
+      }
+    }
+    nativeTrack ??= _queue.cast<AudioTrack?>().firstWhere(
+          (track) => track != null && _trackMatchesNativeMediaId(track, mediaId),
+          orElse: () => null,
+        );
+    if (nativeTrack == null) return;
+    nativeIndex = nativeIndex >= 0 ? nativeIndex : _queue.indexWhere((track) => track.libraryKey == nativeTrack!.libraryKey);
+    if (_currentTrack?.libraryKey != nativeTrack.libraryKey || _currentIndex != nativeIndex) {
+      _currentTrack = nativeTrack;
+      _pendingTrack = null;
+      _currentIndex = nativeIndex;
+      _isPreparingTrack = false;
+      unawaited(_rememberPlaybackHistory(nativeTrack));
+      if (nativeTrack.isRemote) {
+        unawaited(_rememberOnlineTrack(nativeTrack));
+      }
+    }
+  }
+
   void _applyNativePlayerState(Map<String, dynamic> state, {bool notify = true}) {
     _nativeOnlinePlaying = state['playing'] == true;
     _nativeOnlinePlayWhenReady = state['playWhenReady'] == true;
@@ -269,6 +311,24 @@ class MusicPlayerProvider extends ChangeNotifier {
     _nativeOnlineDuration = reportedDuration > Duration.zero ? reportedDuration : (activeDisplayTrack?.duration ?? Duration.zero);
     _nativeOnlineState = '${state['state'] ?? 'idle'}';
     _nativeOnlineMediaId = '${state['mediaId'] ?? ''}'.trim();
+    final nativeShuffle = state['shuffle'];
+    if (nativeShuffle is bool && nativeShuffle != _shuffleEnabled) {
+      _shuffleEnabled = nativeShuffle;
+      unawaited(_prefs?.setBool(_shuffleKey, _shuffleEnabled));
+    }
+    final nativeRepeat = '${state['repeatMode'] ?? ''}'.trim();
+    if (nativeRepeat.isNotEmpty) {
+      final mappedRepeat = switch (nativeRepeat) {
+        'track' => RepeatMode.track,
+        'album' => RepeatMode.album,
+        _ => RepeatMode.off,
+      };
+      if (mappedRepeat != _repeatMode) {
+        _repeatMode = mappedRepeat;
+        unawaited(_prefs?.setInt(_repeatModeKey, _repeatMode.index));
+      }
+    }
+    _syncCurrentTrackFromNativeState(state);
     final nativeError = '${state['error'] ?? ''}'.trim();
     if (nativeError.isNotEmpty) {
       _error = 'Erro do player nativo do Metrolist: $nativeError';
@@ -614,11 +674,11 @@ class MusicPlayerProvider extends ChangeNotifier {
   AudioTrack? get currentTrack => _currentTrack;
   AudioTrack? get pendingTrack => _pendingTrack;
   AudioTrack? get activeDisplayTrack => _pendingTrack ?? _currentTrack;
-  bool get _usingNativeOnlinePlayer => _currentTrack?.isRemote == true || _pendingTrack?.isRemote == true;
+  bool get _usingNativeOnlinePlayer => _currentTrack != null || _pendingTrack != null || _nativeStatePoller != null;
   bool get isPlaybackPlaying {
     if (_usingNativeOnlinePlayer) {
       final nativeStarting = _nativeOnlinePlayWhenReady && _nativeOnlineState != 'ended' && _nativeOnlineState != 'idle';
-      final nativePreparing = _isPreparingTrack && (_currentTrack?.isRemote == true || _pendingTrack?.isRemote == true);
+      final nativePreparing = _isPreparingTrack && (_currentTrack != null || _pendingTrack != null);
       return _nativeOnlinePlaying || nativeStarting || nativePreparing;
     }
     return player.playing;
@@ -1792,7 +1852,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       changed = true;
     }
 
-    if (_isPreparingTrack && (_currentTrack == null || player.processingState == ProcessingState.ready || player.processingState == ProcessingState.completed || player.playing)) {
+    if (_isPreparingTrack && (_currentTrack == null || _nativeOnlineState == 'ready' || _nativeOnlineState == 'ended' || _nativeOnlinePlaying || player.processingState == ProcessingState.ready || player.processingState == ProcessingState.completed || player.playing)) {
       _isPreparingTrack = false;
       _pendingTrack = null;
       changed = true;
@@ -2003,6 +2063,12 @@ class MusicPlayerProvider extends ChangeNotifier {
       addTerm(search);
     }
 
+    final current = _currentTrack;
+    if (current != null && current.isRemote) {
+      addTerm('${current.title} radio');
+      addTerm('músicas parecidas com ${current.title}');
+    }
+
     for (final track in <AudioTrack>[..._localFavoriteTracks(), ..._onlineFavoriteTracks.values, ..._playHistory.take(20)]) {
       addTerm('${track.artist} ${track.title}');
       if (track.album.trim().isNotEmpty && track.album.trim().toLowerCase() != 'desconhecido') {
@@ -2010,7 +2076,22 @@ class MusicPlayerProvider extends ChangeNotifier {
       }
     }
 
-    return ordered.take(12).toList(growable: false);
+    for (final fallback in const <String>[
+      'lançamentos brasil',
+      'top músicas brasil',
+      'músicas virais',
+      'pop hits',
+      'funk atual',
+      'sertanejo hits',
+      'forró piseiro',
+      'k-pop hits',
+      'relax music',
+      'hits internacionais',
+    ]) {
+      addTerm(fallback);
+    }
+
+    return ordered.take(16).toList(growable: false);
   }
 
   int _onlineRecommendationScore(AudioTrack track) {
@@ -2057,6 +2138,23 @@ class MusicPlayerProvider extends ChangeNotifier {
     return score;
   }
 
+  List<AudioTrack> _diversifyTracksByArtist(List<AudioTrack> ranked, {int maxPerArtist = 3}) {
+    final artistCounts = <String, int>{};
+    final firstPass = <AudioTrack>[];
+    final overflow = <AudioTrack>[];
+    for (final track in ranked) {
+      final artistKey = track.artist.trim().toLowerCase();
+      final count = artistCounts[artistKey] ?? 0;
+      if (artistKey.isEmpty || count < maxPerArtist) {
+        firstPass.add(track);
+        artistCounts[artistKey] = count + 1;
+      } else {
+        overflow.add(track);
+      }
+    }
+    return <AudioTrack>[...firstPass, ...overflow];
+  }
+
   List<AudioTrack> _rankOnlineRecommendedSongs(Iterable<AudioTrack> source) {
     final ranked = _dedupeTracks(source).where((track) => track.isRemote).toList();
     ranked.sort((a, b) {
@@ -2066,7 +2164,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       if (artistCmp != 0) return artistCmp;
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
-    return ranked;
+    return _diversifyTracksByArtist(ranked, maxPerArtist: 3);
   }
 
   Future<void> _refreshOnlineRecommendations({List<AudioTrack>? seedSongs}) async {
@@ -2078,9 +2176,9 @@ class MusicPlayerProvider extends ChangeNotifier {
     final terms = _collectOnlineRecommendationQueries();
 
     // Fetch songs in parallel instead of sequentially for speed
-    final songFutures = terms.take(6).map((term) async {
+    final songFutures = terms.take(10).map((term) async {
       try {
-        return await _searchSongsNative(term).timeout(const Duration(seconds: 6));
+        return await _searchSongsNative(term).timeout(const Duration(seconds: 5));
       } catch (_) {
         return const <AudioTrack>[];
       }
@@ -2347,6 +2445,90 @@ class MusicPlayerProvider extends ChangeNotifier {
     return future;
   }
 
+  String _repeatModeNativeName() {
+    switch (_repeatMode) {
+      case RepeatMode.track:
+        return 'track';
+      case RepeatMode.album:
+        return 'album';
+      case RepeatMode.off:
+        return 'off';
+    }
+  }
+
+  Future<Map<String, dynamic>> _nativeTrackPayload(AudioTrack track, {Uri? playUri, bool loadLocalArtwork = false}) async {
+    Uri? artUri;
+    if (track.isRemote) {
+      final art = _highQualityArtworkUrl(track.artworkUrl ?? '');
+      if (art.isNotEmpty) artUri = Uri.tryParse(art);
+    } else if (loadLocalArtwork) {
+      artUri = await _bestMediaArtUriForTrack(track);
+    } else {
+      artUri = _notificationArtworkUriCache[track.albumGroupKey] ?? _notificationArtworkUriCache[track.libraryKey];
+    }
+
+    return <String, dynamic>{
+      'id': track.id,
+      'libraryKey': track.libraryKey,
+      'isRemote': track.isRemote,
+      'videoId': (track.videoId ?? track.id).trim(),
+      'title': track.title,
+      'artist': track.artist,
+      'album': track.album,
+      'durationMs': track.durationMs,
+      'uri': track.uri,
+      'playUri': playUri?.toString() ?? '',
+      'path': track.path,
+      'mimeType': track.mimeType,
+      'artworkUrl': artUri?.toString() ?? _highQualityArtworkUrl(track.artworkUrl ?? ''),
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> _nativeQueuePayload(List<AudioTrack> queue, {required AudioTrack currentTrack, Uri? currentPlayUri}) async {
+    final payload = <Map<String, dynamic>>[];
+    for (final item in queue) {
+      payload.add(
+        await _nativeTrackPayload(
+          item,
+          playUri: item.libraryKey == currentTrack.libraryKey ? currentPlayUri : null,
+          loadLocalArtwork: item.libraryKey == currentTrack.libraryKey,
+        ),
+      );
+    }
+    return payload;
+  }
+
+  Future<void> _syncNativePlaybackOptions() async {
+    try {
+      await _invokeNativePlayer('nativeUpdateOptions', <String, dynamic>{
+        'shuffle': _shuffleEnabled,
+        'repeatMode': _repeatModeNativeName(),
+      }).timeout(const Duration(milliseconds: 500));
+    } catch (_) {}
+  }
+
+
+  Future<bool> _ensureNativePlayerLoadedForCurrentTrack() async {
+    final track = _currentTrack;
+    if (track == null) return false;
+    try {
+      final state = await _invokeNativePlayer('nativeState').timeout(const Duration(milliseconds: 500));
+      final queueSizeRaw = state['queueSize'];
+      final queueSize = queueSizeRaw is num ? queueSizeRaw.toInt() : int.tryParse('$queueSizeRaw') ?? 0;
+      final mediaId = '${state['mediaId'] ?? ''}'.trim();
+      if (queueSize > 0 && (mediaId.isEmpty || _trackMatchesNativeMediaId(track, mediaId))) {
+        _applyNativePlayerState(state, notify: false);
+        return true;
+      }
+    } catch (_) {}
+
+    // Depois que o app reabre, o Flutter pode lembrar a música atual, mas o
+    // ExoPlayer nativo ainda não tem fila carregada. Nesse caso, prepare a
+    // faixa atual novamente em vez de mandar apenas resume() para um player vazio.
+    await _setBestAudioSource(track);
+    return false;
+  }
+
   Future<void> playOnlineTrack(AudioTrack track, {List<AudioTrack>? queue}) async {
     final sourceQueue = _dedupeTracks(queue ?? <AudioTrack>[track]);
     final targetQueueIndex = sourceQueue.indexWhere((item) => item.libraryKey == track.libraryKey);
@@ -2393,6 +2575,9 @@ class MusicPlayerProvider extends ChangeNotifier {
 
     try {
       final state = await _invokeNativePlayer('nativePlay', <String, dynamic>{
+        'id': track.id,
+        'libraryKey': track.libraryKey,
+        'isRemote': true,
         'videoId': videoId,
         'quality': 'AUTO',
         'title': track.title,
@@ -2400,6 +2585,10 @@ class MusicPlayerProvider extends ChangeNotifier {
         'album': track.album,
         'artworkUrl': _highQualityArtworkUrl(track.artworkUrl ?? ''),
         'durationMs': track.durationMs,
+        'queue': await _nativeQueuePayload(pendingQueue, currentTrack: track),
+        'index': safeTargetIndex,
+        'shuffle': _shuffleEnabled,
+        'repeatMode': _repeatModeNativeName(),
       }).timeout(const Duration(seconds: 6));
 
       if (selectionGeneration != _trackLoadGeneration || _currentTrack?.libraryKey != selectedLibraryKey) {
@@ -2412,9 +2601,11 @@ class MusicPlayerProvider extends ChangeNotifier {
       _isPreparingTrack = false;
       _error = null;
       _startNativeStatePolling();
-      unawaited(_syncNotificationQueue(_queue, _currentIndex, currentTrack: _currentTrack!));
       unawaited(_rememberOnlineTrack(_currentTrack!));
       unawaited(_rememberPlaybackHistory(_currentTrack!));
+      if (_tab == LibraryTab.online && _lastOnlineQuery.isEmpty) {
+        unawaited(_refreshOnlineRecommendations(seedSongs: <AudioTrack>[..._onlineSongs, ..._onlineRecommendedSongs, _currentTrack!]));
+      }
       // Cache do Innertube para as próximas faixas, mas sem bloquear o clique.
       if (pendingQueue.length > 1) {
         for (var offset = 1; offset <= 2 && offset < pendingQueue.length; offset++) {
@@ -2650,6 +2841,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   Future<void> toggleShuffle() async {
     _shuffleEnabled = !_shuffleEnabled;
     await _prefs?.setBool(_shuffleKey, _shuffleEnabled);
+    unawaited(_syncNativePlaybackOptions());
     notifyListeners();
   }
 
@@ -2657,6 +2849,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     _repeatMode = RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length];
     await _prefs?.setInt(_repeatModeKey, _repeatMode.index);
     await _applyRepeatModeToPlayer();
+    unawaited(_syncNativePlaybackOptions());
     notifyListeners();
   }
 
@@ -2860,7 +3053,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       if (generation != _trackLoadGeneration) return;
 
       if (autoSeekMs > 0) {
-        await player.seek(Duration(milliseconds: autoSeekMs));
+        await seek(Duration(milliseconds: autoSeekMs));
       }
 
       _isPreparingTrack = false;
@@ -2934,10 +3127,6 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _setBestAudioSource(AudioTrack track, {int? generation}) async {
-    try {
-      await player.stop().timeout(const Duration(milliseconds: 350));
-    } catch (_) {}
-
     var queue = _dedupeTracks(_queue.isNotEmpty ? _queue : <AudioTrack>[track]);
     var requestedQueueIndex = queue.indexWhere((item) => item.libraryKey == track.libraryKey);
     if (requestedQueueIndex < 0) {
@@ -2946,41 +3135,50 @@ class MusicPlayerProvider extends ChangeNotifier {
     }
 
     if (track.isRemote) {
-      // Segurança: faixa online não deve cair no just_audio. O caminho online
-      // oficial deste app agora é MetrolistNativePlayer/nativePlay.
       await playOnlineTrack(track, queue: queue);
       return;
     }
 
-    // Local: não montar ConcatenatingAudioSource com a biblioteca inteira.
-    // Isso era o que travava música local antes de tocar. Carrega só a faixa
-    // clicada e mantém a fila só na memória para próximo/anterior.
     final candidate = await _quickPlayableUriForTrack(track, preferResolvedPath: true);
     if (generation != null && generation != _trackLoadGeneration) return;
     if (candidate == null) {
       throw Exception('arquivo local sem caminho válido');
     }
 
-    await _serializeAudioSourceLoad(() async {
-      if (generation != null && generation != _trackLoadGeneration) return;
-      await player.setAudioSource(
-        await _audioSourceForUri(candidate, track),
-        preload: false,
-      );
+    _manualRemoteQueueMode = true;
+    _queue = List<AudioTrack>.from(queue);
+    _currentIndex = requestedQueueIndex;
+    _currentTrack = track;
+    _pendingTrack = track;
+    _nativeOnlineDuration = track.duration;
+    _nativeOnlinePosition = Duration.zero;
+    _nativeOnlineBufferedPosition = Duration.zero;
+    _nativeOnlinePlaying = false;
+    _nativeOnlinePlayWhenReady = true;
+    _nativeOnlineState = 'buffering';
+    _nativeOnlineMediaId = track.libraryKey;
+    if (!_nativePositionController.isClosed) _nativePositionController.add(Duration.zero);
+    if (!_nativeDurationController.isClosed) _nativeDurationController.add(track.duration > Duration.zero ? track.duration : null);
+
+    final nativePayload = await _nativeTrackPayload(track, playUri: candidate, loadLocalArtwork: true);
+    nativePayload.addAll(<String, dynamic>{
+      'queue': await _nativeQueuePayload(queue, currentTrack: track, currentPlayUri: candidate),
+      'index': requestedQueueIndex,
+      'shuffle': _shuffleEnabled,
+      'repeatMode': _repeatModeNativeName(),
+      'quality': 'AUTO',
     });
+    final state = await _invokeNativePlayer('nativePlay', nativePayload).timeout(const Duration(seconds: 6));
+
     if (generation != null && generation != _trackLoadGeneration) return;
-    // O player carrega uma única fonte local por vez. Se deixarmos o
-    // currentIndexStream do just_audio atualizar a UI, ele sempre emite 0 e
-    // sobrescreve o player com a primeira faixa do álbum. A fila continua em
-    // memória para próximo/anterior; a UI fica no índice manual correto.
+    _applyNativePlayerState(state, notify: false);
     _manualRemoteQueueMode = true;
     _queue = List<AudioTrack>.from(queue);
     _currentIndex = requestedQueueIndex;
     _currentTrack = track;
     _pendingTrack = null;
     _isPreparingTrack = false;
-    await _applyRepeatModeToPlayer();
-    unawaited(_syncNotificationQueue(_queue, _currentIndex, currentTrack: track));
+    _startNativeStatePolling();
   }
 
   Future<String?> _resolvePlayablePath(AudioTrack track) async {
@@ -3322,16 +3520,22 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> togglePlayback() async {
-    if (_currentTrack?.isRemote == true) {
+    if (_currentTrack != null) {
       try {
+        final alreadyLoaded = await _ensureNativePlayerLoadedForCurrentTrack();
+        if (!alreadyLoaded) {
+          _startNativeStatePolling();
+          await _persistCurrentTrack();
+          notifyListeners();
+          return;
+        }
+
         final nativeStillStarting = _isPreparingTrack ||
             ((_nativeOnlineState == 'buffering' || _nativeOnlineState == 'idle') &&
                 _nativeOnlinePlayWhenReady &&
                 !_nativeOnlinePlaying);
 
         if (nativeStillStarting) {
-          // Enquanto o ExoPlayer nativo ainda resolve o stream pelo Innertube,
-          // tocar no botão não deve pausar e deixar a faixa presa em 00:00.
           _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
           _startNativeStatePolling();
         } else if (_nativeOnlinePlaying) {
@@ -3342,35 +3546,19 @@ class MusicPlayerProvider extends ChangeNotifier {
         }
         await _persistCurrentTrack();
       } catch (error) {
-        _error = 'Erro do player nativo do Metrolist: $error';
+        _error = 'Erro do player nativo: $error';
         _isPreparingTrack = false;
       }
       notifyListeners();
       return;
     }
 
-    if (_currentTrack == null || player.audioSource == null) {
-      final target = _currentTrack;
-      if (target != null) {
-        await playTrack(target, queue: _queue.isNotEmpty ? _queue : _tracks);
-      } else {
-        final visibleTracks = filteredTracks;
-        if (visibleTracks.isNotEmpty) {
-          await playTrack(visibleTracks.first, queue: visibleTracks);
-        } else if (_tracks.isNotEmpty) {
-          await playTrack(_tracks.first, queue: _tracks);
-        }
-      }
-      return;
+    final visibleTracks = filteredTracks;
+    if (visibleTracks.isNotEmpty) {
+      await playTrack(visibleTracks.first, queue: visibleTracks);
+    } else if (_tracks.isNotEmpty) {
+      await playTrack(_tracks.first, queue: _tracks);
     }
-
-    if (player.playing) {
-      await player.pause();
-    } else {
-      await _startPlayback();
-    }
-    await _persistCurrentTrack();
-    notifyListeners();
   }
 
   List<AudioTrack> get _activeQueue => _queue.isNotEmpty ? _queue : _tracks;
@@ -3438,16 +3626,8 @@ class MusicPlayerProvider extends ChangeNotifier {
 
     if (currentQueueIndex >= queue.length - 1) {
       if (!wrap) {
-        if (_currentTrack?.isRemote == true) {
-          await _invokeNativePlayer('nativePause');
-          _nativeOnlinePlaying = false;
-        } else {
-          await player.pause();
-          final duration = player.duration;
-          if (duration != null) {
-            await player.seek(duration);
-          }
-        }
+        await _invokeNativePlayer('nativePause');
+        _nativeOnlinePlaying = false;
         notifyListeners();
         return false;
       }
@@ -3461,42 +3641,20 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _startPlayback() async {
-    if (_currentTrack?.isRemote == true) {
+    if (_currentTrack != null) {
       try {
-        _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
+        final alreadyLoaded = await _ensureNativePlayerLoadedForCurrentTrack();
+        if (alreadyLoaded) {
+          _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
+        }
         _startNativeStatePolling();
         _error = null;
       } catch (error) {
-        _error = 'Falha ao retomar o player nativo do Metrolist: $error';
+        _error = 'Falha ao retomar o player nativo: $error';
       }
       notifyListeners();
       return;
     }
-
-    try {
-      // just_audio's play() future may stay pending until playback stops. Do not
-      // await it here, otherwise every tap can keep the app in a long loading
-      // chain even after the player already started.
-      unawaited(
-        player.play().catchError((Object error, StackTrace stackTrace) {
-          unawaited(_handleAsyncPlaybackError(error));
-        }),
-      );
-      _error = null;
-      final current = _currentTrack;
-      if (current != null) {
-        final queue = _queue.isNotEmpty ? _queue : <AudioTrack>[current];
-        final index = (_currentIndex >= 0 && _currentIndex < queue.length) ? _currentIndex : 0;
-        unawaited(_syncNotificationQueue(queue, index, currentTrack: current));
-        if (current.isRemote) {
-          unawaited(_watchRemotePlaybackStartup(current, _trackLoadGeneration));
-        }
-      }
-    } catch (error) {
-      await _handleAsyncPlaybackError(error);
-      return;
-    }
-    notifyListeners();
   }
 
   Future<void> _watchRemotePlaybackStartup(AudioTrack track, int generation) async {
@@ -3549,11 +3707,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       notifyListeners();
 
       await _setBestAudioSource(fallbackTrack);
-      unawaited(
-        player.play().catchError((Object playError, StackTrace stackTrace) {
-          unawaited(_handleAsyncPlaybackError(playError));
-        }),
-      );
+      await _invokeNativePlayer('nativeResume');
       _pendingTrack = null;
       _isPreparingTrack = false;
       _error = null;
@@ -3600,7 +3754,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
-    if (_currentTrack?.isRemote == true) {
+    if (_currentTrack != null) {
       _applyNativePlayerState(
         await _invokeNativePlayer('nativeSeek', <String, dynamic>{'positionMs': position.inMilliseconds}),
         notify: false,
@@ -3609,7 +3763,6 @@ class MusicPlayerProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    await player.seek(position);
     await _persistCurrentTrack();
     notifyListeners();
   }
@@ -3646,7 +3799,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       return;
     }
 
-    if (_currentTrack?.isRemote == true) {
+    if (_currentTrack != null) {
       unawaited(_refreshWakeLockForPlaybackAndDownloads());
       return;
     }
