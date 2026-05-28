@@ -371,13 +371,19 @@ class MusicPlayerProvider extends ChangeNotifier {
       }
       if (_nativeOnlineState == 'ended' && !_handlingNativeEnded) {
         _handlingNativeEnded = true;
-        if (_repeatMode == RepeatMode.track && _currentTrack != null) {
-          await seek(Duration.zero);
-          await _invokeNativePlayer('nativeResume');
-        } else {
-          await nextTrack(wrap: true);
+        try {
+          if (_repeatMode == RepeatMode.track && _currentTrack != null) {
+            await seek(Duration.zero);
+            await _invokeNativePlayer('nativeResume');
+          } else {
+            final hasQueueNext = _currentIndex >= 0 && _currentIndex < _queue.length - 1;
+            if (_repeatMode == RepeatMode.album || hasQueueNext) {
+              await nextTrack(wrap: _repeatMode == RepeatMode.album);
+            }
+          }
+        } finally {
+          _handlingNativeEnded = false;
         }
-        _handlingNativeEnded = false;
       }
     } catch (_) {}
   }

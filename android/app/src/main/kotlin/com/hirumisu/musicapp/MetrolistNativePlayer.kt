@@ -160,6 +160,38 @@ object MetrolistNativePlayer {
         attachEqualizerToPlayerSession(player)
     }
 
+    private fun resumePrepared(p: ExoPlayer) {
+        if (p.playbackState == Player.STATE_IDLE || p.playbackState == Player.STATE_ENDED) {
+            runCatching { p.prepare() }
+        }
+        p.playWhenReady = true
+        p.play()
+    }
+
+    private fun recoverEndedPlayback(p: ExoPlayer, context: Context) {
+        if (!p.playWhenReady || p.mediaItemCount <= 0) return
+        mainHandler.post {
+            val current = player ?: return@post
+            if (current !== p || current.playbackState != Player.STATE_ENDED || !current.playWhenReady) return@post
+            when {
+                current.repeatMode == Player.REPEAT_MODE_ONE -> {
+                    val index = current.currentMediaItemIndex.coerceAtLeast(0)
+                    current.seekTo(index, 0L)
+                    resumePrepared(current)
+                }
+                current.nextMediaItemIndex != C.INDEX_UNSET -> {
+                    current.seekToNextMediaItem()
+                    resumePrepared(current)
+                }
+                current.repeatMode == Player.REPEAT_MODE_ALL && current.mediaItemCount > 0 -> {
+                    current.seekTo(0, 0L)
+                    resumePrepared(current)
+                }
+            }
+            updateNotification(context.applicationContext)
+        }
+    }
+
     private fun ensurePlayer(context: Context): ExoPlayer {
         check(Looper.myLooper() == Looper.getMainLooper()) { "MetrolistNativePlayer precisa rodar na main thread" }
         ensureInitialized(context)
@@ -202,6 +234,9 @@ object MetrolistNativePlayer {
                 )
                 if (playbackState == Player.STATE_READY) lastError = null
                 attachEqualizerToPlayerSession(created)
+                if (playbackState == Player.STATE_ENDED) {
+                    recoverEndedPlayback(created, context.applicationContext)
+                }
                 updateNotification(context.applicationContext)
             }
 
@@ -405,8 +440,7 @@ object MetrolistNativePlayer {
     }
 
     fun resume(): Map<String, Any?> = onMainSync {
-        player?.playWhenReady = true
-        player?.play()
+        player?.let { resumePrepared(it) }
         appContext?.let { updateNotification(it) }
         state()
     }
@@ -457,15 +491,11 @@ object MetrolistNativePlayer {
     fun skipToNext(): Map<String, Any?> = onMainSync {
         val p = player
         if (p != null) {
-            if (p.nextMediaItemIndex != C.INDEX_UNSET) {
-                p.seekToNextMediaItem()
-                p.playWhenReady = true
-                p.play()
-            } else if (p.mediaItemCount > 0 && p.repeatMode == Player.REPEAT_MODE_ALL) {
-                p.seekTo(0, 0L)
-                p.playWhenReady = true
-                p.play()
+            when {
+                p.nextMediaItemIndex != C.INDEX_UNSET -> p.seekToNextMediaItem()
+                p.mediaItemCount > 0 -> p.seekTo(0, 0L)
             }
+            resumePrepared(p)
         }
         appContext?.let { updateNotification(it) }
         state()
@@ -478,11 +508,10 @@ object MetrolistNativePlayer {
                 p.seekTo(0L)
             } else if (p.previousMediaItemIndex != C.INDEX_UNSET) {
                 p.seekToPreviousMediaItem()
-                p.playWhenReady = true
-                p.play()
             } else {
                 p.seekTo(0L)
             }
+            resumePrepared(p)
         }
         appContext?.let { updateNotification(it) }
         state()
@@ -504,6 +533,9 @@ object MetrolistNativePlayer {
                         Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
                         Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
                         else -> Player.REPEAT_MODE_OFF
+                    }
+                    if (it.playbackState == Player.STATE_ENDED && it.repeatMode != Player.REPEAT_MODE_OFF) {
+                        recoverEndedPlayback(it, context.applicationContext)
                     }
                 }
                 updateNotification(context.applicationContext)

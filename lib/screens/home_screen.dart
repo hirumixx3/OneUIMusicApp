@@ -455,10 +455,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final subtle = isDark ? Colors.white70 : Colors.black54;
 
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final hasFloatingPlayer = provider.currentTrack != null && !keyboardOpen;
+    final bottomPlayerReserve = keyboardOpen ? 8.0 : (hasFloatingPlayer ? 92.0 : 0.0);
 
     if (_controller.index != provider.tab.index && !_controller.indexIsChanging) {
       _controller.index = provider.tab.index;
     }
+
+    final onlineMain = provider.tab == LibraryTab.online;
 
     return Scaffold(
       backgroundColor: bg,
@@ -466,132 +470,125 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         bottom: false,
         child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Music',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -1.1,
-                            ),
+            if (onlineMain)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                child: Column(
+                  children: [
+                    _OnlineMainHeader(
+                      isDark: isDark,
+                      onSearch: () => _showOnlineSearchSheet(context),
+                      onRefresh: () => provider.searchOnline(forceQuery: provider.searchController.text, refresh: true),
+                      onOpenEqualizer: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen())),
+                      onOpenAccount: provider.isLoggedIn ? () => _showOnlineAccountSheet(context) : null,
+                      onOpenMenu: () => _showOnlineNavigationSheet(context, provider),
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: KeyedSubtree(
+                        key: const ValueKey(LibraryTab.online),
+                        child: _OnlineTab(card: card, keyboardOpen: keyboardOpen),
                       ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: provider.tab == LibraryTab.online
-                            ? () => provider.searchOnline(forceQuery: provider.searchController.text, refresh: true)
-                            : provider.scanLibrary,
-                        icon: const Icon(Icons.refresh_rounded),
-                      ),
-                      if (provider.tab == LibraryTab.online)
-                        IconButton(
-                          tooltip: 'Conta',
-                          onPressed: () => _showOnlineAccountSheet(context),
-                          icon: const Icon(Icons.account_circle_rounded),
+                    ),
+                    SizedBox(height: bottomPlayerReserve),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Music',
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1.1,
+                              ),
                         ),
-                      PopupMenuButton<HomeMenuAction>(
-                        tooltip: t.menu,
-                        icon: const Icon(Icons.menu_rounded),
-                        onSelected: (value) {
-                          switch (value) {
-                            case HomeMenuAction.sortLaunch:
-                              provider.setSortMode(SortMode.launch);
-                              break;
-                            case HomeMenuAction.sortAlphabetical:
-                              provider.setSortMode(SortMode.alphabetical);
-                              break;
-                            case HomeMenuAction.sortArtist:
-                              provider.setSortMode(SortMode.artist);
-                              break;
-                            case HomeMenuAction.equalizer:
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()));
-                              break;
-                            case HomeMenuAction.about:
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()));
-                              break;
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: HomeMenuAction.sortLaunch,
-                            child: Text(t.sortRelease),
-                          ),
-                          PopupMenuItem(
-                            value: HomeMenuAction.sortAlphabetical,
-                            child: Text(t.sortAlphabetical),
-                          ),
-                          PopupMenuItem(
-                            value: HomeMenuAction.sortArtist,
-                            child: Text(t.sortByArtist),
-                          ),
-                          const PopupMenuDivider(),
-                          PopupMenuItem(
-                            value: HomeMenuAction.equalizer,
-                            child: Text(t.equalizer),
-                          ),
-                          PopupMenuItem(
-                            value: HomeMenuAction.about,
-                            child: Text(t.aboutApp),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  MusicSearchField(
-                    controller: provider.searchController,
-                    isDark: isDark,
-                    hintText: t.searchHint,
-                    onSubmitted: (_) {
-                      if (provider.tab == LibraryTab.online) {
-                        provider.searchOnline(forceQuery: provider.searchController.text, refresh: true);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TabBar(
-                      controller: _controller,
-                      isScrollable: true,
-                      indicatorColor: Colors.transparent,
-                      dividerColor: Colors.transparent,
-                      tabAlignment: TabAlignment.start,
-                      overlayColor: WidgetStateProperty.all(Colors.transparent),
-                      labelPadding: const EdgeInsets.only(right: 18),
-                      labelStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                      unselectedLabelStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: subtle,
-                          ),
-                      tabs: [
-                        Tab(text: t.tracks),
-                        Tab(text: t.albums),
-                        Tab(text: t.artists),
-                        Tab(text: t.favorites),
-                        Tab(text: t.online),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: provider.scanLibrary,
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                        PopupMenuButton<HomeMenuAction>(
+                          tooltip: t.menu,
+                          icon: const Icon(Icons.menu_rounded),
+                          onSelected: (value) {
+                            switch (value) {
+                              case HomeMenuAction.sortLaunch:
+                                provider.setSortMode(SortMode.launch);
+                                break;
+                              case HomeMenuAction.sortAlphabetical:
+                                provider.setSortMode(SortMode.alphabetical);
+                                break;
+                              case HomeMenuAction.sortArtist:
+                                provider.setSortMode(SortMode.artist);
+                                break;
+                              case HomeMenuAction.equalizer:
+                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()));
+                                break;
+                              case HomeMenuAction.about:
+                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()));
+                                break;
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem(value: HomeMenuAction.sortLaunch, child: Text(t.sortRelease)),
+                            PopupMenuItem(value: HomeMenuAction.sortAlphabetical, child: Text(t.sortAlphabetical)),
+                            PopupMenuItem(value: HomeMenuAction.sortArtist, child: Text(t.sortByArtist)),
+                            const PopupMenuDivider(),
+                            PopupMenuItem(value: HomeMenuAction.equalizer, child: Text(t.equalizer)),
+                            PopupMenuItem(value: HomeMenuAction.about, child: Text(t.aboutApp)),
+                          ],
+                        ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: (provider.isLoading && provider.tab != LibraryTab.online && provider.tracks.isEmpty)
-                        ? const Center(child: CircularProgressIndicator())
-                        : (provider.error != null && provider.tracks.isEmpty && provider.tab != LibraryTab.online)
-                            ? _EmptyState(message: provider.error!)
-                            : KeyedSubtree(
-                                key: ValueKey(provider.tab),
-                                child: _CurrentLibraryView(card: card, keyboardOpen: keyboardOpen),
-                              ),
-                  ),
-                  SizedBox(height: keyboardOpen ? 12 : 120),
-                ],
+                    const SizedBox(height: 12),
+                    MusicSearchField(
+                      controller: provider.searchController,
+                      isDark: isDark,
+                      hintText: t.searchHint,
+                    ),
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TabBar(
+                        controller: _controller,
+                        isScrollable: true,
+                        indicatorColor: Colors.transparent,
+                        dividerColor: Colors.transparent,
+                        tabAlignment: TabAlignment.start,
+                        overlayColor: WidgetStateProperty.all(Colors.transparent),
+                        labelPadding: const EdgeInsets.only(right: 18),
+                        labelStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+                        unselectedLabelStyle: Theme.of(context).textTheme.titleLarge?.copyWith(color: subtle),
+                        tabs: [
+                          Tab(text: t.tracks),
+                          Tab(text: t.albums),
+                          Tab(text: t.artists),
+                          Tab(text: t.favorites),
+                          Tab(text: t.online),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: (provider.isLoading && provider.tracks.isEmpty)
+                          ? const Center(child: CircularProgressIndicator())
+                          : (provider.error != null && provider.tracks.isEmpty)
+                              ? _EmptyState(message: provider.error!)
+                              : KeyedSubtree(
+                                  key: ValueKey(provider.tab),
+                                  child: _CurrentLibraryView(card: card, keyboardOpen: keyboardOpen),
+                                ),
+                    ),
+                    SizedBox(height: keyboardOpen ? 12 : (hasFloatingPlayer ? 112 : 12)),
+                  ],
+                ),
               ),
-            ),
             if (!keyboardOpen)
               const Align(
                 alignment: Alignment.bottomCenter,
@@ -609,6 +606,202 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+}
+
+
+void _showOnlineNavigationSheet(BuildContext context, MusicPlayerProvider provider) {
+  final t = AppStrings.of(context);
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    builder: (sheetContext) {
+      Widget item(IconData icon, String label, VoidCallback onTap) {
+        return ListTile(
+          leading: Icon(icon),
+          title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          onTap: () {
+            Navigator.of(sheetContext).pop();
+            onTap();
+          },
+        );
+      }
+
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 12),
+              item(Icons.library_music_rounded, t.tracks, () => provider.setTab(LibraryTab.tracks)),
+              item(Icons.album_rounded, t.albums, () => provider.setTab(LibraryTab.albums)),
+              item(Icons.person_rounded, t.artists, () => provider.setTab(LibraryTab.artists)),
+              item(Icons.favorite_rounded, t.favorites, () => provider.setTab(LibraryTab.favorites)),
+              const Divider(),
+              item(Icons.equalizer_rounded, t.equalizer, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()))),
+              item(Icons.info_outline_rounded, t.aboutApp, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()))),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Future<void> _showOnlineSearchSheet(BuildContext context) async {
+  final provider = context.read<MusicPlayerProvider>();
+  final controller = TextEditingController(text: provider.searchController.text);
+  try {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(18, 16, 18, 18 + bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).dividerColor.withOpacity(0.55),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    hintText: 'Buscar músicas online...',
+                  ),
+                  onSubmitted: (value) {
+                    final query = value.trim();
+                    provider.searchController.text = query;
+                    provider.setOnlineSectionIndex(0);
+                    provider.searchOnline(forceQuery: query, refresh: true);
+                    Navigator.of(sheetContext).pop();
+                  },
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      final query = controller.text.trim();
+                      provider.searchController.text = query;
+                      provider.searchOnline(forceQuery: query, refresh: true);
+                      Navigator.of(sheetContext).pop();
+                    },
+                    icon: const Icon(Icons.search_rounded),
+                    label: const Text('Pesquisar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  } finally {
+    controller.dispose();
+  }
+}
+
+class _OnlineMainHeader extends StatelessWidget {
+  const _OnlineMainHeader({
+    required this.isDark,
+    required this.onSearch,
+    required this.onRefresh,
+    required this.onOpenEqualizer,
+    required this.onOpenMenu,
+    required this.onOpenAccount,
+  });
+
+  final bool isDark;
+  final VoidCallback onSearch;
+  final VoidCallback onRefresh;
+  final VoidCallback onOpenEqualizer;
+  final VoidCallback onOpenMenu;
+  final VoidCallback? onOpenAccount;
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<MusicPlayerProvider>();
+    final foreground = isDark ? const Color(0xFFE1E4C4) : const Color(0xFF202416);
+    Widget iconButton(IconData icon, VoidCallback onTap, {String? tooltip}) {
+      return IconButton(
+        tooltip: tooltip,
+        onPressed: onTap,
+        color: foreground.withOpacity(0.90),
+        icon: Icon(icon),
+        iconSize: 24,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.all(6),
+        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Início',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1.0,
+                  color: foreground,
+                ),
+          ),
+        ),
+        iconButton(Icons.history_rounded, () => provider.setOnlineSectionIndex(4), tooltip: 'Histórico'),
+        iconButton(Icons.search_rounded, onSearch, tooltip: 'Pesquisar'),
+        iconButton(Icons.refresh_rounded, onRefresh, tooltip: 'Atualizar'),
+        if (provider.isLoggedIn && onOpenAccount != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onOpenAccount,
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: const Color(0xFF8BAA3F),
+                backgroundImage: provider.accountPhoto.trim().isNotEmpty ? NetworkImage(provider.accountPhoto) : null,
+                child: provider.accountPhoto.trim().isEmpty
+                    ? Text(
+                        provider.accountName.trim().isNotEmpty ? provider.accountName.trim()[0].toUpperCase() : 'U',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                      )
+                    : null,
+              ),
+            ),
+          )
+        else
+          Icon(Icons.person_outline_rounded, color: foreground.withOpacity(0.52)),
+        iconButton(Icons.menu_rounded, onOpenMenu, tooltip: 'Menu'),
+      ],
+    );
   }
 }
 
@@ -1134,10 +1327,14 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
     super.build(context);
     final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
+    final requestedSectionIndex = _normalizeSectionIndex(provider.onlineSectionIndex);
+    if (requestedSectionIndex != _sectionIndex) {
+      _sectionIndex = requestedSectionIndex;
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final subtle = isDark ? Colors.white70 : Colors.black54;
     final keyboardOpen = widget.keyboardOpen;
-    final listBottomPadding = keyboardOpen ? 18.0 : 132.0;
+    final listBottomPadding = keyboardOpen ? 18.0 : (provider.currentTrack == null ? 24.0 : 112.0);
 
     Widget content;
     if (_sectionIndex == 3) {
@@ -1223,11 +1420,13 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
               },
             );
     } else if (provider.isOnlineLoading &&
+        _sectionIndex != 0 &&
         provider.onlineDisplaySongs.isEmpty &&
         provider.onlineDisplayArtists.isEmpty &&
         provider.onlineDisplayPlaylists.isEmpty) {
       content = const Center(child: CircularProgressIndicator());
     } else if (provider.onlineError != null &&
+        _sectionIndex != 0 &&
         provider.onlineSongs.isEmpty &&
         provider.onlineDisplayArtists.isEmpty &&
         provider.onlineDisplayPlaylists.isEmpty) {
@@ -1421,12 +1620,14 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
     final pickSongs = songs.skip(12).take(24).toList(growable: false);
     final moodChips = const <String, String>{
       'Podcasts': 'podcasts música Brasil',
-      'Para dormir': 'músicas para dormir',
-      'Relax': 'relax music',
+      'Energia': 'músicas animadas energia',
       'Romance': 'músicas românticas',
-      'Treino': 'músicas para treino',
-      'K-pop': 'k-pop hits',
+      'Para treinar': 'músicas para treino',
+      'Foco': 'músicas para foco',
+      'Para dormir': 'músicas para dormir',
     };
+    final loadingEmptyHome = provider.isOnlineLoading && featuredSongs.isEmpty;
+    final emptyHome = !loadingEmptyHome && featuredSongs.isEmpty;
     return CustomScrollView(
       key: const PageStorageKey('online_youtube_music_home'),
       controller: _controller,
@@ -1461,27 +1662,37 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                   ),
                 ),
                 const SizedBox(height: 26),
-                Text(
-                  'Recomendações',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                _YoutubeSectionHeader(
+                  title: 'Acesso rápido',
+                  actionLabel: featuredSongs.isEmpty ? null : 'Ver tudo',
+                  onActionTap: featuredSongs.isEmpty ? null : () => _openTrackPlayer(context, featuredSongs.first, queue: songs),
                 ),
-                const SizedBox(height: 16),
               ],
             ),
           ),
         ),
-        if (featuredSongs.isNotEmpty)
+        if (emptyHome)
+          SliverToBoxAdapter(
+            child: _OnlineEmptyHomeCard(
+              message: provider.onlineError ?? 'Ainda não carreguei recomendações online.',
+              onRetry: () => provider.searchOnline(refresh: true),
+            ),
+          ),
+        if (featuredSongs.isNotEmpty || loadingEmptyHome)
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                mainAxisSpacing: 6,
+                mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
                 childAspectRatio: 0.82,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
+                  if (featuredSongs.isEmpty) {
+                    return const _YoutubeLoadingTile();
+                  }
                   final track = featuredSongs[index];
                   return _YoutubeMusicTile(
                     title: track.title,
@@ -1489,15 +1700,15 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                     onTap: () => _openTrackPlayer(context, track, queue: songs),
                   );
                 },
-                childCount: featuredSongs.length.clamp(0, 9).toInt(),
+                childCount: featuredSongs.isEmpty ? 9 : featuredSongs.length.clamp(0, 9).toInt(),
               ),
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 26)),
         SliverToBoxAdapter(
           child: _YoutubeSectionHeader(
-            title: 'Escolha a dedo',
-            actionLabel: 'Tocar tudo',
+            title: 'Escolhas rápidas',
+            actionLabel: songs.isEmpty ? null : 'Ver tudo',
             onActionTap: songs.isEmpty ? null : () => _openTrackPlayer(context, songs.first, queue: songs),
           ),
         ),
@@ -1676,6 +1887,92 @@ class _YoutubeSectionHeader extends StatelessWidget {
               child: Text(actionLabel!),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _OnlineEmptyHomeCard extends StatelessWidget {
+  const _OnlineEmptyHomeCard({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(4, 0, 4, 24),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.07) : Colors.black.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.cloud_off_rounded),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Tentar de novo'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YoutubeLoadingTile extends StatelessWidget {
+  const _YoutubeLoadingTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.07) : Colors.black.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withOpacity(isDark ? 0.03 : 0.28),
+                      Colors.transparent,
+                      Colors.white.withOpacity(isDark ? 0.06 : 0.20),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.75),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
