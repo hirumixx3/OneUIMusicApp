@@ -770,7 +770,7 @@ class InnerTube {
      */
     suspend fun deletePrivatelyOwnedEntity(entityId: String) = withRetry {
         val context = YouTubeClient.WEB_REMIX.toContext(locale, visitorData, null)
-        val requestBody = """{"context":${Json.encodeToString(context)},"entityId":"$entityId"}"""
+        val requestBody = """{"context":${Json.encodeToString(Context.serializer(), context)},"entityId":"$entityId"}"""
         httpClient.post("https://music.youtube.com/youtubei/v1/music/delete_privately_owned_entity") {
             contentType(ContentType.Application.Json)
             headers {
