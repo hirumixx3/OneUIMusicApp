@@ -269,6 +269,11 @@ class MusicPlayerProvider extends ChangeNotifier {
     _nativeOnlineDuration = reportedDuration > Duration.zero ? reportedDuration : (activeDisplayTrack?.duration ?? Duration.zero);
     _nativeOnlineState = '${state['state'] ?? 'idle'}';
     _nativeOnlineMediaId = '${state['mediaId'] ?? ''}'.trim();
+    final nativeError = '${state['error'] ?? ''}'.trim();
+    if (nativeError.isNotEmpty) {
+      _error = 'Erro do player nativo do Metrolist: $nativeError';
+      _isPreparingTrack = false;
+    }
     if (!_nativePositionController.isClosed) _nativePositionController.add(_nativeOnlinePosition);
     if (!_nativeDurationController.isClosed) _nativeDurationController.add(_nativeOnlineDuration > Duration.zero ? _nativeOnlineDuration : null);
     if (notify) notifyListeners();
@@ -537,17 +542,10 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _prewarmMetrolistStream(AudioTrack track) async {
-    final videoId = (track.videoId ?? track.id).trim();
-    if (!track.isRemote || videoId.isEmpty) return;
-    try {
-      await _invokeMetrolistMap('prewarmStream', <String, dynamic>{
-        'videoId': videoId,
-        'quality': 'AUTO',
-      }).timeout(const Duration(seconds: 10));
-    } catch (_) {
-      // Playback still works without prewarm; this only warms the native
-      // Metrolist cache so the first 512 KiB chunk is ready faster.
-    }
+    // Desativado de propósito: a aba Online agora usa a pasta android/innertube
+    // como fonte principal e o player nativo resolve o stream apenas quando o
+    // ExoPlayer abre os bytes, igual ao Metrolist. Não usar proxy/prewarm aqui.
+    return;
   }
 
 
