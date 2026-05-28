@@ -617,7 +617,14 @@ class MusicPlayerProvider extends ChangeNotifier {
   AudioTrack? get pendingTrack => _pendingTrack;
   AudioTrack? get activeDisplayTrack => _pendingTrack ?? _currentTrack;
   bool get _usingNativeOnlinePlayer => _currentTrack?.isRemote == true || _pendingTrack?.isRemote == true;
-  bool get isPlaybackPlaying => _usingNativeOnlinePlayer ? _nativeOnlinePlaying : player.playing;
+  bool get isPlaybackPlaying {
+    if (_usingNativeOnlinePlayer) {
+      final nativeStarting = _nativeOnlinePlayWhenReady && _nativeOnlineState != 'ended' && _nativeOnlineState != 'idle';
+      final nativePreparing = _isPreparingTrack && (_currentTrack?.isRemote == true || _pendingTrack?.isRemote == true);
+      return _nativeOnlinePlaying || nativeStarting || nativePreparing;
+    }
+    return player.playing;
+  }
   Duration get playbackPosition => _usingNativeOnlinePlayer ? _nativeOnlinePosition : player.position;
   Duration get playbackBufferedPosition => _usingNativeOnlinePlayer ? _nativeOnlineBufferedPosition : player.bufferedPosition;
   Duration get playbackDuration {
@@ -2376,6 +2383,12 @@ class MusicPlayerProvider extends ChangeNotifier {
     _nativeOnlineDuration = track.duration;
     _nativeOnlinePosition = Duration.zero;
     _nativeOnlineBufferedPosition = Duration.zero;
+    _nativeOnlinePlaying = false;
+    _nativeOnlinePlayWhenReady = true;
+    _nativeOnlineState = 'buffering';
+    _nativeOnlineMediaId = videoId;
+    if (!_nativePositionController.isClosed) _nativePositionController.add(Duration.zero);
+    if (!_nativeDurationController.isClosed) _nativeDurationController.add(track.duration > Duration.zero ? track.duration : null);
     _error = null;
     _isPreparingTrack = true;
     notifyListeners();

@@ -2,6 +2,8 @@ package com.hirumisu.musicapp
 
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -10,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.Extractor
@@ -19,6 +22,8 @@ import androidx.media3.extractor.mkv.MatroskaExtractor
 import com.metrolist.music.constants.AudioQuality
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 import timber.log.Timber
 
 /**
@@ -39,15 +44,38 @@ object MetrolistNativePlayer {
     @Volatile private var lastError: String? = null
     @Volatile private var currentQuality: String = AudioQuality.AUTO.name
 
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val songUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
 
+    private fun <T> onMainSync(block: () -> T): T {
+        if (Looper.myLooper() == Looper.getMainLooper()) return block()
+        val valueRef = AtomicReference<T?>()
+        val errorRef = AtomicReference<Throwable?>()
+        val latch = CountDownLatch(1)
+        mainHandler.post {
+            try {
+                valueRef.set(block())
+            } catch (t: Throwable) {
+                errorRef.set(t)
+            } finally {
+                latch.countDown()
+            }
+        }
+        latch.await()
+        errorRef.get()?.let { throw it }
+        @Suppress("UNCHECKED_CAST")
+        return valueRef.get() as T
+    }
+
     private fun ensurePlayer(context: Context): ExoPlayer {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "MetrolistNativePlayer precisa rodar na main thread" }
         appContext = context.applicationContext
         player?.let { return it }
         synchronized(this) {
             player?.let { return it }
             if (Timber.treeCount == 0) Timber.plant(Timber.DebugTree())
             val created = ExoPlayer.Builder(context.applicationContext)
+                .setLooper(Looper.getMainLooper())
                 .setMediaSourceFactory(createMediaSourceFactory(context.applicationContext))
                 .build()
             created.addListener(object : Player.Listener {
@@ -81,7 +109,20 @@ object MetrolistNativePlayer {
         )
 
     private fun createDataSourceFactory(context: Context): DataSource.Factory =
-        ResolvingDataSource.Factory(DefaultDataSource.Factory(context)) { dataSpec ->
+        ResolvingDataSource.Factory(
+            DefaultDataSource.Factory(
+                context,
+                OkHttpDataSource.Factory(MetrolistStreamResolver.httpClient)
+                    .setUserAgent(MetrolistStreamResolver.UPSTREAM_USER_AGENT)
+                    .setDefaultRequestProperties(
+                        mapOf(
+                            "Accept" to "*/*",
+                            "Accept-Encoding" to "identity",
+                            "Referer" to "https://music.youtube.com/",
+                        ),
+                    ),
+            ),
+        ) { dataSpec ->
             val mediaId = dataSpec.key?.takeIf { it.isNotBlank() }
                 ?: dataSpec.uri.toString().takeIf { it.isNotBlank() }
                 ?: error("No media id")
@@ -106,7 +147,7 @@ object MetrolistNativePlayer {
     private fun MetrolistStreamResolver.NativePlayback.streamTtlMs(): Long =
         kotlin.math.max(60_000L, expiresInSeconds.coerceAtLeast(60) * 1000L - 120_000L)
 
-    fun play(context: Context, args: Map<String, Any?>): Map<String, Any?> {
+    fun play(context: Context, args: Map<String, Any?>): Map<String, Any?> = onMainSync {
         val videoId = (args["videoId"] as? String).orEmpty().trim()
         require(videoId.isNotEmpty()) { "videoId vazio" }
         currentQuality = ((args["quality"] as? String) ?: AudioQuality.AUTO.name).uppercase(Locale.US)
@@ -146,54 +187,54 @@ object MetrolistNativePlayer {
         nativePlayer.prepare()
         nativePlayer.playWhenReady = true
         nativePlayer.play()
-        return state()
+        state()
     }
 
-    fun pause(): Map<String, Any?> {
+    fun pause(): Map<String, Any?> = onMainSync {
         player?.pause()
-        return state()
+        state()
     }
 
-    fun resume(): Map<String, Any?> {
+    fun resume(): Map<String, Any?> = onMainSync {
         player?.playWhenReady = true
         player?.play()
-        return state()
+        state()
     }
 
-    fun seek(positionMs: Long): Map<String, Any?> {
+    fun seek(positionMs: Long): Map<String, Any?> = onMainSync {
         player?.seekTo(positionMs.coerceAtLeast(0L))
-        return state()
+        state()
     }
 
-    fun stop(): Map<String, Any?> {
+    fun stop(): Map<String, Any?> = onMainSync {
         player?.stop()
         player?.clearMediaItems()
-        return state()
+        state()
     }
 
-    fun release(): Map<String, Any?> {
+    fun release(): Map<String, Any?> = onMainSync {
         player?.release()
         player = null
         songUrlCache.clear()
-        return state()
+        state()
     }
 
-    fun invalidate(videoId: String): Map<String, Any?> {
+    fun invalidate(videoId: String): Map<String, Any?> = onMainSync {
         val key = videoId.trim()
         if (key.isNotEmpty()) {
             songUrlCache.remove(key)
             MetrolistStreamResolver.invalidate(key)
         }
-        return state()
+        state()
     }
 
-    fun state(): Map<String, Any?> {
+    fun state(): Map<String, Any?> = onMainSync {
         val p = player
         val duration = p?.duration?.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
         val position = p?.currentPosition?.takeIf { it >= 0L } ?: 0L
         val buffered = p?.bufferedPosition?.takeIf { it >= 0L } ?: 0L
         val playbackState = p?.playbackState ?: Player.STATE_IDLE
-        return mapOf(
+        mapOf(
             "playing" to (p?.isPlaying == true),
             "playWhenReady" to (p?.playWhenReady == true),
             "positionMs" to position,
