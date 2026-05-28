@@ -3323,13 +3323,28 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   Future<void> togglePlayback() async {
     if (_currentTrack?.isRemote == true) {
-      if (_nativeOnlinePlaying || _nativeOnlinePlayWhenReady) {
-        _applyNativePlayerState(await _invokeNativePlayer('nativePause'), notify: false);
-      } else {
-        _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
-        _startNativeStatePolling();
+      try {
+        final nativeStillStarting = _isPreparingTrack ||
+            ((_nativeOnlineState == 'buffering' || _nativeOnlineState == 'idle') &&
+                _nativeOnlinePlayWhenReady &&
+                !_nativeOnlinePlaying);
+
+        if (nativeStillStarting) {
+          // Enquanto o ExoPlayer nativo ainda resolve o stream pelo Innertube,
+          // tocar no botão não deve pausar e deixar a faixa presa em 00:00.
+          _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
+          _startNativeStatePolling();
+        } else if (_nativeOnlinePlaying) {
+          _applyNativePlayerState(await _invokeNativePlayer('nativePause'), notify: false);
+        } else {
+          _applyNativePlayerState(await _invokeNativePlayer('nativeResume'), notify: false);
+          _startNativeStatePolling();
+        }
+        await _persistCurrentTrack();
+      } catch (error) {
+        _error = 'Erro do player nativo do Metrolist: $error';
+        _isPreparingTrack = false;
       }
-      await _persistCurrentTrack();
       notifyListeners();
       return;
     }

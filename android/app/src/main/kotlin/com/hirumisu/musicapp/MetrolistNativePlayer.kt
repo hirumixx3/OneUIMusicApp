@@ -94,6 +94,7 @@ object MetrolistNativePlayer {
         if (Timber.treeCount == 0) Timber.plant(Timber.DebugTree())
         val app = context.applicationContext
         appContext = app
+        MetrolistYouTubeSession.restore(app, blockForVisitor = false)
         runCatching { CipherDeobfuscator.initialize(app) }
     }
 

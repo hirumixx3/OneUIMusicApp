@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import com.metrolist.innertube.YouTube
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -24,7 +23,7 @@ class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Restore persisted cookie on startup
+        // Restore the full Metrolist/Innertube session on startup
         restorePersistedCookie()
 
         AppSystemBridge.initialize(applicationContext)
@@ -248,13 +247,7 @@ class MainActivity : AudioServiceActivity() {
                         // result delivered in onActivityResult
                     }
                     "logoutGoogle" -> {
-                        YouTube.cookie = null
-                        getSharedPreferences("metrolist_prefs", MODE_PRIVATE).edit()
-                            .remove("yt_cookie")
-                            .remove("account_name")
-                            .remove("account_email")
-                            .remove("account_photo")
-                            .apply()
+                        MetrolistYouTubeSession.clearAccount(applicationContext)
                         result.success(true)
                     }
                     "getGoogleAccount" -> {
@@ -341,13 +334,9 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
-    /** Re-apply a previously saved login cookie so streams work after restart. */
+    /** Re-apply the saved Metrolist/Innertube session so streams work after restart. */
     private fun restorePersistedCookie() {
-        val prefs = getSharedPreferences("metrolist_prefs", MODE_PRIVATE)
-        val cookie = prefs.getString("yt_cookie", null)
-        if (!cookie.isNullOrBlank()) {
-            YouTube.cookie = cookie
-        }
+        MetrolistYouTubeSession.restore(applicationContext, blockForVisitor = false)
     }
 
     private fun runOnMain(result: MethodChannel.Result, errorCode: String, block: () -> Any?) {

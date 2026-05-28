@@ -96,13 +96,13 @@ class GoogleLoginActivity : Activity() {
                         photo = info?.thumbnailUrl.orEmpty()
                     }
 
-                    getSharedPreferences("metrolist_prefs", MODE_PRIVATE)
-                        .edit()
-                        .putString("yt_cookie", rawCookie)
-                        .putString("account_name", name)
-                        .putString("account_email", email)
-                        .putString("account_photo", photo)
-                        .apply()
+                    MetrolistYouTubeSession.saveCookie(
+                        applicationContext,
+                        rawCookie,
+                        name = name,
+                        email = email,
+                        photo = photo,
+                    )
 
                     mainHandler.post {
                         val data = Intent()

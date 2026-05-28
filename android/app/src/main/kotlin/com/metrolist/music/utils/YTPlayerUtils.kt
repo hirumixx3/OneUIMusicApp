@@ -9,6 +9,7 @@ import android.net.ConnectivityManager
 import android.net.Uri
 import androidx.media3.common.PlaybackException
 import com.metrolist.innertube.NewPipeExtractor
+import com.metrolist.innertube.NewPipeUtils
 import com.metrolist.innertube.YouTube
 import com.metrolist.innertube.models.YouTubeClient
 import com.metrolist.innertube.models.YouTubeClient.Companion.ANDROID_CREATOR
@@ -40,6 +41,13 @@ object YTPlayerUtils {
 
     private val httpClient = OkHttpClient.Builder()
         .proxy(YouTube.proxy)
+        .proxyAuthenticator { _, response ->
+            YouTube.proxyAuth?.let { auth ->
+                response.request.newBuilder()
+                    .header("Proxy-Authorization", auth)
+                    .build()
+            } ?: response.request
+        }
         .build()
 
     private val poTokenGenerator = PoTokenGenerator()
@@ -88,8 +96,15 @@ object YTPlayerUtils {
         Timber.tag(TAG).d("Content type detection (preliminary):")
         Timber.tag(TAG).d("  isUploadedTrack (from playlistId): $isUploadedTrack")
 
-        val isLoggedIn = YouTube.cookie != null
+        val isLoggedIn = !YouTube.cookie.isNullOrBlank()
         Timber.tag(TAG).d("Authentication status: ${if (isLoggedIn) "LOGGED_IN" else "ANONYMOUS"}")
+
+        // The old Metrolist app always keeps visitorData alive from Application.onCreate.
+        // In this Flutter host there is no Metrolist Application, so load it here too.
+        if (YouTube.visitorData.isNullOrBlank()) {
+            YouTube.visitorData = YouTube.visitorData().getOrNull()?.takeIf { it.isNotBlank() }
+            Timber.tag(logTag).d("visitorData present for playback: ${!YouTube.visitorData.isNullOrBlank()}")
+        }
 
         // Get signature timestamp (same as before for normal content)
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
@@ -97,8 +112,12 @@ object YTPlayerUtils {
 
         // Generate PoToken
         var poToken: PoTokenResult? = null
-        val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
-        if (MAIN_CLIENT.useWebPoTokens && sessionId != null) {
+        val sessionId = when {
+            !YouTube.dataSyncId.isNullOrBlank() -> YouTube.dataSyncId
+            !YouTube.visitorData.isNullOrBlank() -> YouTube.visitorData
+            else -> null
+        }
+        if (MAIN_CLIENT.useWebPoTokens && !sessionId.isNullOrBlank()) {
             Timber.tag(logTag).d("Generating PoToken for WEB_REMIX with sessionId")
             try {
                 poToken = poTokenGenerator.getWebClientPoToken(videoId, sessionId)
@@ -567,12 +586,19 @@ object YTPlayerUtils {
             Timber.tag(logTag).d("Custom cipher deobfuscation failed")
         }
 
-        // Always try NewPipe signature deobfuscation - it doesn't need auth,
-        // it just applies the cipher algorithm from player.js.
-        // This is critical for privately-owned tracks where skipNewPipe is true.
+        // Try the exact Metrolist NewPipe helper first: it deobfuscates both the
+        // cipher signature and the throttling n= parameter from player.js.
+        val newPipeUtilsUrl = NewPipeUtils.getStreamUrl(format, videoId).getOrNull()
+        if (!newPipeUtilsUrl.isNullOrBlank()) {
+            Timber.tag(logTag).d("Stream URL obtained via Metrolist NewPipeUtils")
+            return newPipeUtilsUrl
+        }
+
+        // Keep the legacy extractor fallback too, for devices where one of the
+        // NewPipe helper paths fails because of player.js cache/state.
         val deobfuscatedUrl = NewPipeExtractor.getStreamUrl(format, videoId)
-        if (deobfuscatedUrl != null) {
-            Timber.tag(logTag).d("Stream URL obtained via NewPipe deobfuscation")
+        if (!deobfuscatedUrl.isNullOrBlank()) {
+            Timber.tag(logTag).d("Stream URL obtained via NewPipeExtractor deobfuscation")
             return deobfuscatedUrl
         }
 

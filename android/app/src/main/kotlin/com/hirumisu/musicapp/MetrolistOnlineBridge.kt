@@ -32,6 +32,7 @@ object MetrolistOnlineBridge {
             synchronized(this) {
                 if (!initialized) {
                     if (Timber.treeCount == 0) Timber.plant(Timber.DebugTree())
+                    MetrolistYouTubeSession.restore(context.applicationContext, blockForVisitor = false)
                     CipherDeobfuscator.initialize(context.applicationContext)
                     initialized = true
                 }

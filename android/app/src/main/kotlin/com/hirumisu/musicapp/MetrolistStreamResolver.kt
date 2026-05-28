@@ -93,6 +93,7 @@ object MetrolistStreamResolver {
             synchronized(this) {
                 if (!initialized) {
                     if (Timber.treeCount == 0) Timber.plant(Timber.DebugTree())
+                    MetrolistYouTubeSession.restore(context.applicationContext, blockForVisitor = false)
                     CipherDeobfuscator.initialize(context.applicationContext)
                     // NewPipeUtils is initialized by its object init when used; no explicit ensureInitialized() exists in this Innertube version.
                     initialized = true
