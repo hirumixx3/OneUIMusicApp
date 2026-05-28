@@ -94,7 +94,7 @@ object MetrolistStreamResolver {
                 if (!initialized) {
                     if (Timber.treeCount == 0) Timber.plant(Timber.DebugTree())
                     CipherDeobfuscator.initialize(context.applicationContext)
-                    NewPipeUtils.ensureInitialized()
+                    // NewPipeUtils is initialized by its object init when used; no explicit ensureInitialized() exists in this Innertube version.
                     initialized = true
                 }
             }
