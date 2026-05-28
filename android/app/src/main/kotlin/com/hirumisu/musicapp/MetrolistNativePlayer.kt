@@ -147,6 +147,19 @@ object MetrolistNativePlayer {
         return session
     }
 
+    private fun attachEqualizerToPlayerSession(nativePlayer: ExoPlayer?): Int {
+        val audioSessionId = runCatching { nativePlayer?.audioSessionId ?: 0 }.getOrDefault(0)
+        if (audioSessionId > 0) {
+            runCatching { AppEqualizer.attachToSession(audioSessionId) }
+                .onFailure { Timber.tag(TAG).w(it, "Falha ao anexar equalizador à sessão %s", audioSessionId) }
+        }
+        return audioSessionId
+    }
+
+    private fun ensureEqualizerForCurrentPlayer() {
+        attachEqualizerToPlayerSession(player)
+    }
+
     private fun ensurePlayer(context: Context): ExoPlayer {
         check(Looper.myLooper() == Looper.getMainLooper()) { "MetrolistNativePlayer precisa rodar na main thread" }
         ensureInitialized(context)
@@ -188,16 +201,19 @@ object MetrolistNativePlayer {
                     created.currentMediaItem?.mediaId,
                 )
                 if (playbackState == Player.STATE_READY) lastError = null
+                attachEqualizerToPlayerSession(created)
                 updateNotification(context.applicationContext)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                attachEqualizerToPlayerSession(created)
                 updateNotification(context.applicationContext)
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentArtworkBitmap = null
                 currentArtworkKey = null
+                attachEqualizerToPlayerSession(created)
                 updateNotification(context.applicationContext)
             }
 
@@ -210,6 +226,7 @@ object MetrolistNativePlayer {
             }
         })
         player = created
+        attachEqualizerToPlayerSession(created)
         return created
     }
 
@@ -376,6 +393,7 @@ object MetrolistNativePlayer {
         nativePlayer.prepare()
         nativePlayer.playWhenReady = true
         nativePlayer.play()
+        attachEqualizerToPlayerSession(nativePlayer)
         updateNotification(context.applicationContext)
         state()
     }
@@ -500,6 +518,7 @@ object MetrolistNativePlayer {
         val position = p?.currentPosition?.takeIf { it >= 0L } ?: 0L
         val buffered = p?.bufferedPosition?.takeIf { it >= 0L } ?: 0L
         val playbackState = p?.playbackState ?: Player.STATE_IDLE
+        val audioSessionId = attachEqualizerToPlayerSession(p)
         mapOf(
             "playing" to (p?.isPlaying == true),
             "playWhenReady" to (p?.playWhenReady == true),
@@ -509,6 +528,8 @@ object MetrolistNativePlayer {
             "mediaId" to (p?.currentMediaItem?.mediaId ?: ""),
             "queueIndex" to (p?.currentMediaItemIndex ?: -1),
             "queueSize" to (p?.mediaItemCount ?: 0),
+            "audioSessionId" to audioSessionId,
+            "equalizer" to AppEqualizer.getState(),
             "shuffle" to (p?.shuffleModeEnabled == true),
             "repeatMode" to when (p?.repeatMode ?: Player.REPEAT_MODE_OFF) {
                 Player.REPEAT_MODE_ONE -> "track"

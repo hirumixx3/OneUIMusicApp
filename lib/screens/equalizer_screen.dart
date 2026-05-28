@@ -26,6 +26,8 @@ class EqualizerScreen extends StatelessWidget {
       EqualizerPreset.trebleBoost,
       EqualizerPreset.custom,
     ];
+    final equalizerReady = provider.equalizerSupported && provider.equalizerAttached && provider.equalizerBands.isNotEmpty;
+    final equalizerActive = equalizerReady && provider.equalizerEnabled;
 
     return Scaffold(
       backgroundColor: bg,
@@ -39,10 +41,10 @@ class EqualizerScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            tooltip: provider.equalizerEnabled ? t.equalizerStatusActive : t.equalizerStatusOff,
+            tooltip: equalizerActive ? t.equalizerStatusActive : t.equalizerStatusOff,
             onPressed: provider.equalizerSupported ? () => provider.setEqualizerEnabled(!provider.equalizerEnabled) : null,
             icon: Icon(
-              provider.equalizerEnabled ? Icons.equalizer_rounded : Icons.equalizer_outlined,
+              equalizerActive ? Icons.equalizer_rounded : Icons.equalizer_outlined,
             ),
           ),
           IconButton(
@@ -68,9 +70,11 @@ class EqualizerScreen extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        provider.equalizerEnabled ? t.equalizerStatusActive : t.equalizerStatusOff,
+                        equalizerReady
+                            ? (provider.equalizerEnabled ? t.equalizerStatusActive : t.equalizerStatusOff)
+                            : t.equalizerNeedsPlayback,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: provider.equalizerEnabled ? const Color(0xFFC9D9FF) : secondary,
+                              color: equalizerActive ? const Color(0xFFC9D9FF) : secondary,
                               fontWeight: FontWeight.w700,
                             ),
                       ),
@@ -85,7 +89,7 @@ class EqualizerScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 _EqualizerChart(
                   bands: provider.equalizerBands,
-                  enabled: provider.equalizerEnabled && provider.equalizerSupported,
+                  enabled: equalizerActive,
                   onChanged: provider.setEqualizerBandLevel,
                 ),
               ],
@@ -100,7 +104,7 @@ class EqualizerScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: secondary, height: 1.35),
               ),
             )
-          else if (provider.equalizerBands.isEmpty)
+          else if (!equalizerReady)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: Text(
@@ -124,7 +128,7 @@ class EqualizerScreen extends StatelessWidget {
             ),
           const SizedBox(height: 18),
           Text(
-            provider.equalizerSupported && provider.equalizerBands.isNotEmpty
+            equalizerReady
                 ? t.descriptionForEqualizerPreset(provider.equalizerPreset)
                 : t.equalizerOnlyAppAudio,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: secondary, height: 1.35),

@@ -311,6 +311,26 @@ class MusicPlayerProvider extends ChangeNotifier {
     _nativeOnlineDuration = reportedDuration > Duration.zero ? reportedDuration : (activeDisplayTrack?.duration ?? Duration.zero);
     _nativeOnlineState = '${state['state'] ?? 'idle'}';
     _nativeOnlineMediaId = '${state['mediaId'] ?? ''}'.trim();
+
+    // O player real agora é o ExoPlayer nativo. O sessionId antigo vindo do
+    // just_audio não serve mais para o equalizador; por isso pegamos a sessão
+    // atual do MetrolistNativePlayer e anexamos o equalizador a ela.
+    final nativeEqualizerPayload = state['equalizer'];
+    if (nativeEqualizerPayload is Map) {
+      _applyEqualizerPayload(nativeEqualizerPayload, notify: false);
+    }
+    final nativeSessionRaw = state['audioSessionId'];
+    final nativeSessionId = nativeSessionRaw is num
+        ? nativeSessionRaw.toInt()
+        : int.tryParse('${nativeSessionRaw ?? ''}') ?? 0;
+    if (nativeSessionId > 0) {
+      final sessionChanged = _audioSessionId != nativeSessionId;
+      _audioSessionId = nativeSessionId;
+      if (_equalizerSupported && (sessionChanged || !_equalizerAttached || _equalizerBands.isEmpty)) {
+        unawaited(_attachEqualizerToCurrentSession());
+      }
+    }
+
     final nativeShuffle = state['shuffle'];
     if (nativeShuffle is bool && nativeShuffle != _shuffleEnabled) {
       _shuffleEnabled = nativeShuffle;
