@@ -25,11 +25,7 @@ object PlayerJsFetcher {
         .build()
 
     // Regex to extract player hash from iframe_api response
-    private val PLAYER_HASH_REGEXES = listOf(
-        Regex("""/s/player/([a-zA-Z0-9_-]+)/"""),
-        Regex("""player/([a-zA-Z0-9_-]+)/"""),
-        Regex("""player_ias\.vflset/[^/]+/([a-zA-Z0-9_-]+)/"""),
-    )
+    private val PLAYER_HASH_REGEX = Regex("""\\?/s\\?/player\\?/([a-zA-Z0-9_-]+)\\?/""")
 
     private fun getCacheDir(): File = File(CipherDeobfuscator.appContext.filesDir, "cipher_cache")
 
@@ -215,52 +211,16 @@ object PlayerJsFetcher {
         Timber.tag(TAG).d("iframe_api body length: ${body.length}")
         Timber.tag(TAG).v("iframe_api body preview: ${body.take(200)}...")
 
-        val bodies = listOf(body, body.replace("\\/", "/"))
-        for (candidateBody in bodies) {
-            for (regex in PLAYER_HASH_REGEXES) {
-                val match = regex.find(candidateBody)
-                if (match != null) {
-                    val hash = match.groupValues[1]
-                    Timber.tag(TAG).d("Found player hash: $hash using ${regex.pattern}")
-                    return hash
-                }
-            }
+        val match = PLAYER_HASH_REGEX.find(body)
+        if (match == null) {
+            Timber.tag(TAG).e("Could not find player hash in iframe_api response")
+            Timber.tag(TAG).d("Regex pattern: ${PLAYER_HASH_REGEX.pattern}")
+            return null
         }
 
-        // iframe_api sometimes changes shape. Fall back to the Music page, where
-        // the same /s/player/<hash>/... base.js URL is embedded.
-        fetchPlayerHashFromPage("https://music.youtube.com/")?.let { return it }
-        fetchPlayerHashFromPage("https://www.youtube.com/")?.let { return it }
-
-        Timber.tag(TAG).e("Could not find player hash in iframe_api response")
-        Timber.tag(TAG).d("Tried patterns: ${PLAYER_HASH_REGEXES.joinToString { it.pattern }}")
-        return null
-    }
-
-    private fun fetchPlayerHashFromPage(url: String): String? {
-        return try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .build()
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
-                val body = response.body?.string() ?: return null
-                val normalized = body.replace("\\/", "/")
-                for (regex in PLAYER_HASH_REGEXES) {
-                    val match = regex.find(normalized)
-                    if (match != null) {
-                        val hash = match.groupValues[1]
-                        Timber.tag(TAG).d("Found player hash from $url: $hash")
-                        return hash
-                    }
-                }
-                null
-            }
-        } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "Fallback player hash fetch failed for $url")
-            null
-        }
+        val hash = match.groupValues[1]
+        Timber.tag(TAG).d("Found player hash: $hash")
+        return hash
     }
 
     private fun downloadPlayerJs(hash: String): String? {

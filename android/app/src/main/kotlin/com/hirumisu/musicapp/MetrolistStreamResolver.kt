@@ -211,7 +211,7 @@ object MetrolistStreamResolver {
         val metrolistData = metrolistResult.getOrNull()
         if (metrolistData != null && metrolistData.streamUrl.isNotBlank()) {
             val transformed = prepareUrl(metrolistData.streamUrl)
-            val metrolistClientName = metrolistData.clientName.ifBlank { "YTPlayerUtils.playerResponseForPlayback" }
+            val metrolistClientName = "YTPlayerUtils.playerResponseForPlayback"
             if (transformed != null && isRangePlayable(transformed, metrolistClientName, metrolistData.format.contentLength)) {
                 return NativePlayback(
                     url = transformed,

@@ -1,9 +1,11 @@
 package com.hirumisu.musicapp
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -17,35 +19,56 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorsFactory
-import androidx.media3.extractor.mp4.FragmentedMp4Extractor
 import androidx.media3.extractor.mkv.MatroskaExtractor
+import androidx.media3.extractor.mp4.FragmentedMp4Extractor
+import com.metrolist.innertube.YouTube
 import com.metrolist.music.constants.AudioQuality
+import com.metrolist.music.utils.YTPlayerUtils
+import com.metrolist.music.utils.cipher.CipherDeobfuscator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import timber.log.Timber
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
-import timber.log.Timber
 
 /**
- * Native online player that follows Metrolist's Android playback path.
+ * Player online nativo, sem just_audio.
  *
- * Online tracks do not go through Flutter/just_audio and do not receive a
- * pre-resolved localhost/googlevideo URL.  ExoPlayer opens a media item whose
- * URI/key is the YouTube video id, then ResolvingDataSource resolves each
- * requested chunk through Metrolist's YTPlayerUtils.playerResponseForPlayback,
- * exactly like the old Metrolist MusicService flow.
+ * Este arquivo replica o caminho de reprodução do Metrolist antigo:
+ * ExoPlayer -> ResolvingDataSource -> YTPlayerUtils.playerResponseForPlayback -> googlevideo por ranges.
+ * O Flutter só manda o videoId e controla play/pause/seek.
  */
 object MetrolistNativePlayer {
     private const val TAG = "MetrolistNativePlayer"
     private const val CHUNK_LENGTH = 512 * 1024L
+    private const val CACHE_SAFETY_MS = 120_000L
 
     @Volatile private var appContext: Context? = null
     @Volatile private var player: ExoPlayer? = null
     @Volatile private var lastError: String? = null
-    @Volatile private var currentQuality: String = AudioQuality.AUTO.name
+    @Volatile private var currentQuality: AudioQuality = AudioQuality.AUTO
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val songUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .proxy(YouTube.proxy)
+            .proxyAuthenticator { _, response ->
+                YouTube.proxyAuth?.let { auth ->
+                    response.request.newBuilder()
+                        .header("Proxy-Authorization", auth)
+                        .build()
+                } ?: response.request
+            }
+            .build()
+    }
 
     private fun <T> onMainSync(block: () -> T): T {
         if (Looper.myLooper() == Looper.getMainLooper()) return block()
@@ -67,40 +90,57 @@ object MetrolistNativePlayer {
         return valueRef.get() as T
     }
 
-    private fun ensurePlayer(context: Context): ExoPlayer {
-        check(Looper.myLooper() == Looper.getMainLooper()) { "MetrolistNativePlayer precisa rodar na main thread" }
-        appContext = context.applicationContext
-        player?.let { return it }
-        synchronized(this) {
-            player?.let { return it }
-            if (Timber.treeCount == 0) Timber.plant(Timber.DebugTree())
-            val created = ExoPlayer.Builder(context.applicationContext)
-                .setLooper(Looper.getMainLooper())
-                .setMediaSourceFactory(createMediaSourceFactory(context.applicationContext))
-                .build()
-            created.addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    val mediaId = created.currentMediaItem?.mediaId
-                    lastError = "${error.errorCodeName}: ${error.message ?: error.cause?.message ?: "erro"}"
-                    if (!mediaId.isNullOrBlank()) {
-                        songUrlCache.remove(mediaId)
-                        MetrolistStreamResolver.invalidate(mediaId)
-                    }
-                    Timber.tag(TAG).w(error, "Native player error for %s", mediaId)
-                }
-
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) {
-                        lastError = null
-                    }
-                }
-            })
-            player = created
-            return created
-        }
+    private fun ensureInitialized(context: Context) {
+        if (Timber.treeCount == 0) Timber.plant(Timber.DebugTree())
+        val app = context.applicationContext
+        appContext = app
+        runCatching { CipherDeobfuscator.initialize(app) }
     }
 
-    private fun createMediaSourceFactory(context: Context): DefaultMediaSourceFactory =
+    private fun ensurePlayer(context: Context): ExoPlayer {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "MetrolistNativePlayer precisa rodar na main thread" }
+        ensureInitialized(context)
+        player?.let { return it }
+        val created = ExoPlayer.Builder(context.applicationContext)
+            .setLooper(Looper.getMainLooper())
+            .setMediaSourceFactory(createMediaSourceFactory(context.applicationContext))
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                true,
+            )
+            .setSeekBackIncrementMs(5000)
+            .setSeekForwardIncrementMs(5000)
+            .build()
+
+        created.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                val mediaId = created.currentMediaItem?.mediaId.orEmpty()
+                lastError = "${error.errorCodeName}: ${error.message ?: error.cause?.message ?: "erro"}"
+                if (mediaId.isNotBlank()) songUrlCache.remove(mediaId)
+                Timber.tag(TAG).e(error, "Erro no player nativo do Metrolist para %s", mediaId)
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                Timber.tag(TAG).d("state=%s playing=%s playWhenReady=%s pos=%s mediaId=%s",
+                    playbackState,
+                    created.isPlaying,
+                    created.playWhenReady,
+                    created.currentPosition,
+                    created.currentMediaItem?.mediaId,
+                )
+                if (playbackState == Player.STATE_READY) lastError = null
+            }
+        })
+        player = created
+        return created
+    }
+
+    private fun createMediaSourceFactory(context: Context) =
         DefaultMediaSourceFactory(
             createDataSourceFactory(context),
             ExtractorsFactory {
@@ -112,51 +152,64 @@ object MetrolistNativePlayer {
         ResolvingDataSource.Factory(
             DefaultDataSource.Factory(
                 context,
-                OkHttpDataSource.Factory(MetrolistStreamResolver.httpClient)
-                    .setUserAgent(MetrolistStreamResolver.UPSTREAM_USER_AGENT)
-                    .setDefaultRequestProperties(
-                        mapOf(
-                            "Accept" to "*/*",
-                            "Accept-Encoding" to "identity",
-                            "Referer" to "https://music.youtube.com/",
-                        ),
-                    ),
+                OkHttpDataSource.Factory(httpClient),
             ),
         ) { dataSpec ->
             val mediaId = dataSpec.key?.takeIf { it.isNotBlank() }
                 ?: dataSpec.uri.toString().takeIf { it.isNotBlank() }
                 ?: error("No media id")
 
-            val now = System.currentTimeMillis()
-            songUrlCache[mediaId]?.takeIf { it.second > now }?.let { cached ->
-                // Same behavior as the old Metrolist MusicService: once the stream URL is cached,
-                // keep ExoPlayer's requested range untouched and only replace the URI.
+            songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let { cached ->
                 return@Factory dataSpec.withUri(Uri.parse(cached.first))
             }
 
-            val playback = MetrolistStreamResolver.resolvePlaybackForProxy(
-                context = context.applicationContext,
-                videoId = mediaId,
-                qualityName = currentQuality,
-                forceRefresh = false,
-            )
-            songUrlCache[mediaId] = playback.url to (System.currentTimeMillis() + playback.streamTtlMs())
-            dataSpec.withUri(Uri.parse(playback.url)).subrange(dataSpec.uriPositionOffset, CHUNK_LENGTH)
-        }
+            Timber.tag(TAG).i("FETCHING STREAM: %s | quality=%s", mediaId, currentQuality)
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val playbackData = runBlocking(Dispatchers.IO) {
+                YTPlayerUtils.playerResponseForPlayback(
+                    mediaId,
+                    audioQuality = currentQuality,
+                    connectivityManager = connectivityManager,
+                )
+            }.getOrElse { throwable ->
+                when (throwable) {
+                    is PlaybackException -> throw throwable
+                    is ConnectException, is UnknownHostException -> throw PlaybackException(
+                        "Sem internet para tocar a música online",
+                        throwable,
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                    )
+                    is SocketTimeoutException -> throw PlaybackException(
+                        "Tempo esgotado ao carregar a música online",
+                        throwable,
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                    )
+                    else -> throw PlaybackException(
+                        throwable.message ?: "Erro ao resolver stream pelo Metrolist",
+                        throwable,
+                        PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                    )
+                }
+            }
 
-    private fun MetrolistStreamResolver.NativePlayback.streamTtlMs(): Long =
-        kotlin.math.max(60_000L, expiresInSeconds.coerceAtLeast(60) * 1000L - 120_000L)
+            val streamUrl = playbackData.streamUrl
+            songUrlCache[mediaId] = streamUrl to (
+                System.currentTimeMillis() + (playbackData.streamExpiresInSeconds * 1000L) - CACHE_SAFETY_MS
+            )
+            dataSpec.withUri(Uri.parse(streamUrl)).subrange(dataSpec.uriPositionOffset, CHUNK_LENGTH)
+        }
 
     fun play(context: Context, args: Map<String, Any?>): Map<String, Any?> = onMainSync {
         val videoId = (args["videoId"] as? String).orEmpty().trim()
         require(videoId.isNotEmpty()) { "videoId vazio" }
-        currentQuality = ((args["quality"] as? String) ?: AudioQuality.AUTO.name).uppercase(Locale.US)
-            .ifBlank { AudioQuality.AUTO.name }
+        currentQuality = runCatching {
+            AudioQuality.valueOf(((args["quality"] as? String) ?: AudioQuality.AUTO.name).uppercase(Locale.US))
+        }.getOrDefault(AudioQuality.AUTO)
+
         val title = (args["title"] as? String).orEmpty().ifBlank { "Música online" }
         val artist = (args["artist"] as? String).orEmpty()
         val album = (args["album"] as? String).orEmpty()
         val artworkUrl = (args["artworkUrl"] as? String).orEmpty().trim()
-        val durationMs = (args["durationMs"] as? Number)?.toLong() ?: 0L
 
         val nativePlayer = ensurePlayer(context)
         lastError = null
@@ -167,23 +220,24 @@ object MetrolistNativePlayer {
             .setSubtitle(artist)
             .setArtist(artist)
             .setAlbumTitle(album)
-            .setIsPlayable(true)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
         if (artworkUrl.startsWith("http://") || artworkUrl.startsWith("https://")) {
             metadataBuilder.setArtworkUri(Uri.parse(artworkUrl))
         }
 
-        val itemBuilder = MediaItem.Builder()
+        val mediaItem = MediaItem.Builder()
             .setMediaId(videoId)
             .setUri(videoId)
             .setCustomCacheKey(videoId)
             .setMediaMetadata(metadataBuilder.build())
-        // Duration is reported back to Flutter from its catalog metadata; the
-        // media item itself must stay unclipped like Metrolist.
-        @Suppress("UNUSED_VARIABLE")
-        val ignoredDurationMs = durationMs
+            .build()
 
-        nativePlayer.setMediaItem(itemBuilder.build())
+        // Faz igual ao Metrolist: o item é o videoId, e o ResolvingDataSource resolve quando o ExoPlayer abrir bytes.
+        nativePlayer.stop()
+        nativePlayer.clearMediaItems()
+        nativePlayer.setMediaItem(mediaItem)
         nativePlayer.prepare()
         nativePlayer.playWhenReady = true
         nativePlayer.play()
@@ -221,10 +275,7 @@ object MetrolistNativePlayer {
 
     fun invalidate(videoId: String): Map<String, Any?> = onMainSync {
         val key = videoId.trim()
-        if (key.isNotEmpty()) {
-            songUrlCache.remove(key)
-            MetrolistStreamResolver.invalidate(key)
-        }
+        if (key.isNotEmpty()) songUrlCache.remove(key)
         state()
     }
 

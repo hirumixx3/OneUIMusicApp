@@ -25,6 +25,9 @@ import com.metrolist.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.metrolist.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.metrolist.innertube.models.response.PlayerResponse
 import com.metrolist.music.constants.AudioQuality
+import com.metrolist.music.utils.YTPlayerUtils.MAIN_CLIENT
+import com.metrolist.music.utils.YTPlayerUtils.STREAM_FALLBACK_CLIENTS
+import com.metrolist.music.utils.YTPlayerUtils.validateStatus
 import com.metrolist.music.utils.cipher.CipherDeobfuscator
 import com.metrolist.music.utils.potoken.PoTokenGenerator
 import com.metrolist.music.utils.potoken.PoTokenResult
@@ -63,7 +66,6 @@ object YTPlayerUtils {
         val format: PlayerResponse.StreamingData.Format,
         val streamUrl: String,
         val streamExpiresInSeconds: Int,
-        val clientName: String = "",
     )
     /**
      * Custom player response intended to use for playback.
@@ -168,7 +170,6 @@ object YTPlayerUtils {
             isAgeRestricted -> 0
             else -> -1
         }
-        var selectedClientName: String = ""
 
         for (clientIndex in (startIndex until STREAM_FALLBACK_CLIENTS.size)) {
             // reset for each client
@@ -316,18 +317,22 @@ object YTPlayerUtils {
 
                 Timber.tag(logTag).d("Stream expires in: $streamExpiresInSeconds seconds")
 
-                if (validateStatus(streamUrl, currentClient)) {
+                if (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1) {
+                    /** skip [validateStatus] for last client */
+                    Timber.tag(logTag).d("Using last fallback client without validation: ${STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
+                    Timber.tag(TAG)
+                        .i("Playback: client=${currentClient.clientName}, videoId=$videoId")
+                    break
+                }
+
+                if (validateStatus(streamUrl)) {
                     // working stream found
                     Timber.tag(logTag).d("Stream validated successfully with client: ${currentClient.clientName}")
                     // Log for release builds
-                    selectedClientName = currentClient.clientName
                     Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId")
                     break
                 } else {
                     Timber.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
-                    streamUrl = null
-                    format = null
-                    streamExpiresInSeconds = null
                 }
             } else {
                 Timber.tag(logTag).d("Player response status not OK: ${streamPlayerResponse?.playabilityStatus?.status}, reason: ${streamPlayerResponse?.playabilityStatus?.reason}")
@@ -367,9 +372,9 @@ object YTPlayerUtils {
             throw Exception("Could not find format")
         }
 
-        if (streamUrl == null || selectedClientName.isBlank()) {
-            Timber.tag(logTag).e("Could not find verified stream url")
-            throw Exception("Could not find verified stream url")
+        if (streamUrl == null) {
+            Timber.tag(logTag).e("Could not find stream url")
+            throw Exception("Could not find stream url")
         }
 
         Timber.tag(logTag).d("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
@@ -383,7 +388,6 @@ object YTPlayerUtils {
             format,
             streamUrl,
             streamExpiresInSeconds,
-            selectedClientName,
         )
     }.onFailure { e ->
         println("[PLAYBACK_DEBUG] EXCEPTION during playback for videoId=$videoId: ${e::class.simpleName}: ${e.message}")
@@ -486,57 +490,28 @@ object YTPlayerUtils {
      * If this returns true the url is likely to work.
      * If this returns false the url might cause an error during playback.
      */
-    private fun validateStatus(url: String, client: YouTubeClient? = null): Boolean {
+    private fun validateStatus(url: String): Boolean {
         Timber.tag(logTag).d("Validating stream URL status")
-        val probes = listOf(0L to 1L, 1_048_576L to 1_048_577L)
-        var firstProbeOk = false
-        for ((start, end) in probes) {
-            try {
-                val requestBuilder = okhttp3.Request.Builder()
-                    .get()
-                    .url(url)
-                    .header("Range", "bytes=$start-$end")
-                    .header("Accept-Encoding", "identity")
-                    .header("Accept", "*/*")
-                    .header("User-Agent", userAgentForClient(client))
+        try {
+            val requestBuilder = okhttp3.Request.Builder()
+                .head()
+                .url(url)
 
-                YouTube.cookie?.let { cookie ->
-                    requestBuilder.addHeader("Cookie", cookie)
-                    println("[PLAYBACK_DEBUG] Added cookie to validation request")
-                }
-
-                httpClient.newCall(requestBuilder.build()).execute().use { response ->
-                    val ok = response.code == 200 || response.code == 206
-                    if (start == 0L) firstProbeOk = ok
-                    // A 416 on the second probe means the object is shorter than the
-                    // probe offset. That is rare for songs, but it is not a broken URL
-                    // if the first byte probe worked.
-                    if (start > 0L && response.code == 416 && firstProbeOk) return true
-                    if (!ok) {
-                        Timber.tag(logTag).d("Stream URL validation failed at $start-$end (${response.code})")
-                        return false
-                    }
-                }
-            } catch (e: Exception) {
-                Timber.tag(logTag).e(e, "Stream URL validation failed with exception")
-                reportException(e)
-                return false
+            // Add authentication cookie for privately owned tracks
+            YouTube.cookie?.let { cookie ->
+                requestBuilder.addHeader("Cookie", cookie)
+                println("[PLAYBACK_DEBUG] Added cookie to validation request")
             }
-        }
-        Timber.tag(logTag).d("Stream URL validation result: Success")
-        return true
-    }
 
-    private fun userAgentForClient(client: YouTubeClient?): String {
-        val name = client?.clientName?.uppercase() ?: ""
-        return when {
-            name.contains("IOS") || name.contains("IPADOS") ->
-                "com.google.ios.youtube/21.03.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)"
-            name.contains("ANDROID") ->
-                "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
-            else ->
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            val response = httpClient.newCall(requestBuilder.build()).execute()
+            val isSuccessful = response.isSuccessful
+            Timber.tag(logTag).d("Stream URL validation result: ${if (isSuccessful) "Success" else "Failed"} (${response.code})")
+            return isSuccessful
+        } catch (e: Exception) {
+            Timber.tag(logTag).e(e, "Stream URL validation failed with exception")
+            reportException(e)
         }
+        return false
     }
     data class SignatureTimestampResult(
         val timestamp: Int?,

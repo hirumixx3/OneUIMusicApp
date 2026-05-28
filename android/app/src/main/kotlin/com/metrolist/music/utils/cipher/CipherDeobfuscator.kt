@@ -114,25 +114,11 @@ object CipherDeobfuscator {
         Timber.tag(TAG).d("Input URL length: ${url.length}")
         Timber.tag(TAG).d("Input URL preview: ${url.take(100)}...")
 
-        if (!Regex("[?&]n=").containsMatchIn(url)) return url
-
         return try {
-            val first = transformNInternal(url)
-            if (first != url) return first
-            Timber.tag(TAG).w("N-transform returned original URL; forcing fresh player JS and retrying")
-            PlayerJsFetcher.invalidateCache()
-            closeWebView()
             transformNInternal(url)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "N-transform failed, retrying with fresh JS: ${e.message}")
-            try {
-                PlayerJsFetcher.invalidateCache()
-                closeWebView()
-                transformNInternal(url)
-            } catch (retryE: Exception) {
-                Timber.tag(TAG).e(retryE, "N-transform retry failed, returning original URL: ${retryE.message}")
-                url
-            }
+            Timber.tag(TAG).e(e, "N-transform failed, returning original URL: ${e.message}")
+            url
         }
     }
 
@@ -211,20 +197,16 @@ object CipherDeobfuscator {
         val analysis = FunctionNameExtractor.analyzePlayerJs(playerJs, knownHash = hash)
 
         if (analysis.sigInfo == null) {
-            // Do not abort here. Signature deciphering needs sigInfo, but n-transform
-            // only needs the n function. Recent YouTube player JS changes can break
-            // sig regex extraction while the n-function is still discoverable/exportable.
-            // Aborting here made every URL with an n= parameter stay untransformed,
-            // which then caused googlevideo to return 403 after the first chunks.
-            Timber.tag(TAG).w("Could not extract signature function info from player JS; continuing for n-transform")
+            Timber.tag(TAG).e("Could not extract signature function info from player JS")
+            return null
         }
 
         if (analysis.nFuncInfo == null) {
-            Timber.tag(TAG).w("Could not extract n-function info from player JS (will try WebView brute-force)")
+            Timber.tag(TAG).w("Could not extract n-function info from player JS (will try brute-force)")
         }
 
         Timber.tag(TAG).d("Creating CipherWebView...")
-        Timber.tag(TAG).d("  sig: ${analysis.sigInfo?.name ?: "NONE"} (constantArg=${analysis.sigInfo?.constantArg}, hardcoded=${analysis.sigInfo?.isHardcoded})")
+        Timber.tag(TAG).d("  sig: ${analysis.sigInfo.name} (constantArg=${analysis.sigInfo.constantArg}, hardcoded=${analysis.sigInfo.isHardcoded})")
         Timber.tag(TAG).d("  nFunc: ${analysis.nFuncInfo?.name}[${analysis.nFuncInfo?.arrayIndex}] (hardcoded=${analysis.nFuncInfo?.isHardcoded})")
 
         // Create WebView
