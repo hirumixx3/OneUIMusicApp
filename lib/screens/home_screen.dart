@@ -275,31 +275,6 @@ class _OnlineAccountSheet extends StatefulWidget {
 class _OnlineAccountSheetState extends State<_OnlineAccountSheet> {
   bool _loading = false;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery(reloadHome: false);
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      if (_onlineShellIndex != 0) {
-        setState(() => _onlineShellIndex = 0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
@@ -477,6 +452,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (provider.tab == LibraryTab.online) {
       if (provider.onlineActiveQuery.isNotEmpty) {
         await provider.clearOnlineQuery();
+        return false;
+      }
+      if (_onlineShellIndex != 0) {
+        setState(() => _onlineShellIndex = 0);
         return false;
       }
       if (provider.onlineSectionIndex != 0) {
