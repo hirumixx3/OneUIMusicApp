@@ -801,27 +801,6 @@ class _OnlineMainHeader extends StatelessWidget {
   final VoidCallback onOpenMenu;
   final VoidCallback? onOpenAccount;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
@@ -888,27 +867,6 @@ class _CurrentLibraryView extends StatelessWidget {
 
   final Color card;
   final bool keyboardOpen;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2049,27 +2007,6 @@ class _AppAdaptiveIcon extends StatelessWidget {
 
   final double size;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -2098,27 +2035,6 @@ class _YoutubeMusicChip extends StatelessWidget {
 
   final String label;
   final VoidCallback onTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2150,27 +2066,6 @@ class _YoutubeSectionHeader extends StatelessWidget {
   final String title;
   final String? actionLabel;
   final VoidCallback? onActionTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2204,27 +2099,6 @@ class _OnlineEmptyHomeCard extends StatelessWidget {
 
   final String message;
   final VoidCallback onRetry;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2261,27 +2135,6 @@ class _OnlineEmptyHomeCard extends StatelessWidget {
 
 class _YoutubeLoadingTile extends StatelessWidget {
   const _YoutubeLoadingTile();
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2334,27 +2187,6 @@ class _YoutubeMusicTile extends StatelessWidget {
   final String? subtitle;
   final String imageUrl;
   final VoidCallback onTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2430,27 +2262,6 @@ class _YoutubeSongRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onFavoriteTap;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white60 : Colors.black54;
@@ -2474,27 +2285,6 @@ class _YoutubeArtistBubble extends StatelessWidget {
 
   final OnlineArtist artist;
   final VoidCallback onTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2525,27 +2315,6 @@ class _OnlineSectionChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2579,27 +2348,6 @@ class _OnlineAlbumCard extends StatelessWidget {
 
   final OnlineAlbum album;
   final VoidCallback onTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2664,27 +2412,6 @@ class _OnlineArtistRow extends StatelessWidget {
 
   final OnlineArtist artist;
   final VoidCallback onTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2752,27 +2479,6 @@ class _OnlinePlaylistRow extends StatelessWidget {
 
   final OnlinePlaylist playlist;
   final VoidCallback onTap;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2847,27 +2553,6 @@ class _RemoteArtworkBox extends StatelessWidget {
   final double? size;
   final double radius;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -2911,27 +2596,6 @@ class OnlineAlbumScreen extends StatelessWidget {
   const OnlineAlbumScreen({super.key, required this.album});
 
   final OnlineAlbum album;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3010,27 +2674,6 @@ class OnlineArtistScreen extends StatelessWidget {
   const OnlineArtistScreen({super.key, required this.artist});
 
   final OnlineArtist artist;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3161,27 +2804,6 @@ class _OnlineSectionHeader extends StatelessWidget {
   final String actionLabel;
   final VoidCallback onActionTap;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -3205,27 +2827,6 @@ class OnlineArtistAllSongsScreen extends StatelessWidget {
   const OnlineArtistAllSongsScreen({super.key, required this.page});
 
   final OnlineArtistPage page;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3296,27 +2897,6 @@ class OnlineArtistAllAlbumsScreen extends StatelessWidget {
   const OnlineArtistAllAlbumsScreen({super.key, required this.page});
 
   final OnlineArtistPage page;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3391,27 +2971,6 @@ class OnlinePlaylistScreen extends StatelessWidget {
   const OnlinePlaylistScreen({super.key, required this.playlist});
 
   final OnlinePlaylist playlist;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3502,27 +3061,6 @@ class _UserPlaylistRow extends StatelessWidget {
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -3608,27 +3146,6 @@ class UserPlaylistScreen extends StatelessWidget {
   const UserPlaylistScreen({super.key, required this.playlistId});
 
   final String playlistId;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3754,27 +3271,6 @@ class ArtistDetailScreen extends StatelessWidget {
 
   final String artistName;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -3891,27 +3387,6 @@ class AlbumDetailScreen extends StatelessWidget {
   final String albumKey;
   final List<AudioTrack> tracks;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -4012,27 +3487,6 @@ class _AlbumCard extends StatelessWidget {
   final List<AudioTrack> tracks;
   final VoidCallback onTap;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -4099,27 +3553,6 @@ class _ArtworkCard extends StatelessWidget {
   final AudioTrack track;
   final bool albumMode;
 
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -4151,27 +3584,6 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.message});
 
   final String message;
-
-  Future<bool> _handleSystemBack() async {
-    final provider = context.read<MusicPlayerProvider>();
-    if (provider.tab == LibraryTab.online) {
-      if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
-        return false;
-      }
-      if (provider.onlineSectionIndex != 0) {
-        provider.setOnlineSectionIndex(0);
-        return false;
-      }
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    if (provider.tab != LibraryTab.tracks) {
-      provider.setTab(LibraryTab.tracks);
-      return false;
-    }
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
