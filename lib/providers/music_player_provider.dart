@@ -780,7 +780,9 @@ class MusicPlayerProvider extends ChangeNotifier {
     final hasSongs = _onlineSongs.isNotEmpty || _onlineRecommendedSongs.isNotEmpty;
     final hasArtists = _onlineArtists.isNotEmpty || _onlineRecommendedArtists.isNotEmpty;
     final hasPlaylists = _onlinePlaylists.isNotEmpty || _onlineRecommendedPlaylists.isNotEmpty;
-    return hasSongs && hasArtists && hasPlaylists;
+    // A home do Innertube pode chegar por partes. Basta qualquer bloco
+    // carregado para a tela Metrolist não voltar ao estado vazio.
+    return hasSongs || hasArtists || hasPlaylists;
   }
   List<AudioTrack> get playHistory => List.unmodifiable(_playHistory);
   List<UserPlaylist> get userPlaylists => List.unmodifiable(_userPlaylists);
@@ -1194,24 +1196,11 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   int _normalizeOnlineSectionIndex(int value) {
-    switch (value) {
-      case 0:
-        return 0;
-      case 1:
-        return 0;
-      case 2:
-        return 1;
-      case 3:
-        return 2;
-      case 4:
-        return 3;
-      case 5:
-        return 4;
-      case 6:
-        return 5;
-      default:
-        return value.clamp(0, 5);
-    }
+    // Ordem usada pela interface Online estilo Metrolist:
+    // 0 Início, 1 Artistas, 2 Playlists, 3 Favoritos, 4 Histórico,
+    // 5 Minhas playlists. Antes esta função deslocava os índices herdados
+    // da barra antiga e o botão de histórico abria a tela errada.
+    return value.clamp(0, 5).toInt();
   }
 
   void setOnlineSectionIndex(int value) {

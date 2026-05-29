@@ -279,11 +279,15 @@ class _OnlineAccountSheetState extends State<_OnlineAccountSheet> {
     final provider = context.read<MusicPlayerProvider>();
     if (provider.tab == LibraryTab.online) {
       if (provider.onlineActiveQuery.isNotEmpty) {
-        await provider.clearOnlineQuery();
+        await provider.clearOnlineQuery(reloadHome: false);
         return false;
       }
       if (provider.onlineSectionIndex != 0) {
         provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      if (_onlineShellIndex != 0) {
+        setState(() => _onlineShellIndex = 0);
         return false;
       }
       provider.setTab(LibraryTab.tracks);
@@ -444,6 +448,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  int _onlineShellIndex = 0;
+
   late final TabController _controller = TabController(
     length: 5,
     vsync: this,
@@ -498,13 +504,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final hasFloatingPlayer = provider.currentTrack != null && !keyboardOpen;
-    final bottomPlayerReserve = keyboardOpen ? 8.0 : (hasFloatingPlayer ? 104.0 : 0.0);
+    final onlineMain = provider.tab == LibraryTab.online;
+    final onlineBottomBarHeight = onlineMain ? 82.0 : 0.0;
+    final bottomPlayerReserve = keyboardOpen
+        ? 8.0
+        : (hasFloatingPlayer ? (onlineMain ? 176.0 : 104.0) : onlineBottomBarHeight + 8.0);
 
     if (_controller.index != provider.tab.index && !_controller.indexIsChanging) {
       _controller.index = provider.tab.index;
     }
-
-    final onlineMain = provider.tab == LibraryTab.online;
 
     return WillPopScope(
       onWillPop: _handleSystemBack,
@@ -521,7 +529,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   children: [
                     _OnlineMainHeader(
                       isDark: isDark,
-                      onSearch: () => _showOnlineSearchSheet(context),
+                      shellIndex: _onlineShellIndex,
+                      onOpenHistory: () {
+                        setState(() => _onlineShellIndex = 0);
+                        provider.setOnlineSectionIndex(4);
+                      },
+                      onSearch: () => setState(() => _onlineShellIndex = 1),
                       onRefresh: () {
                         final query = provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text.trim() : '';
                         provider.searchOnline(forceQuery: query, refresh: true);
@@ -533,8 +546,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     const SizedBox(height: 16),
                     Expanded(
                       child: KeyedSubtree(
-                        key: const ValueKey(LibraryTab.online),
-                        child: _OnlineTab(card: card, keyboardOpen: keyboardOpen),
+                        key: ValueKey('online_shell_$_onlineShellIndex'),
+                        child: _OnlineShellBody(
+                          index: _onlineShellIndex,
+                          card: card,
+                          keyboardOpen: keyboardOpen,
+                          onGoHome: () => setState(() => _onlineShellIndex = 0),
+                          onGoSearch: () => setState(() => _onlineShellIndex = 1),
+                          onGoLibrary: () => setState(() => _onlineShellIndex = 2),
+                        ),
                       ),
                     ),
                     SizedBox(height: bottomPlayerReserve),
@@ -636,10 +656,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ],
                 ),
               ),
-            if (!keyboardOpen)
+            if (!keyboardOpen && !onlineMain)
               const Align(
                 alignment: Alignment.bottomCenter,
                 child: FloatingPlayerBar(),
+              ),
+            if (!keyboardOpen && onlineMain)
+              const Positioned(
+                left: 0,
+                right: 0,
+                bottom: 72,
+                child: FloatingPlayerBar(metrolistStyle: true),
+              ),
+            if (onlineMain)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _MetrolistBottomNavigation(
+                  selectedIndex: _onlineShellIndex,
+                  onSelected: (index) async {
+                    if (index == 0) {
+                      await provider.clearOnlineQuery(reloadHome: false);
+                      provider.setOnlineSectionIndex(0);
+                    }
+                    setState(() => _onlineShellIndex = index);
+                  },
+                ),
               ),
           ],
         ),
@@ -787,6 +830,8 @@ Future<void> _showOnlineSearchSheet(BuildContext context) async {
 class _OnlineMainHeader extends StatelessWidget {
   const _OnlineMainHeader({
     required this.isDark,
+    required this.shellIndex,
+    required this.onOpenHistory,
     required this.onSearch,
     required this.onRefresh,
     required this.onOpenEqualizer,
@@ -795,6 +840,8 @@ class _OnlineMainHeader extends StatelessWidget {
   });
 
   final bool isDark;
+  final int shellIndex;
+  final VoidCallback onOpenHistory;
   final VoidCallback onSearch;
   final VoidCallback onRefresh;
   final VoidCallback onOpenEqualizer;
@@ -822,7 +869,7 @@ class _OnlineMainHeader extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            'Início',
+            shellIndex == 1 ? 'Pesquisar' : shellIndex == 2 ? 'Biblioteca' : 'Início',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -832,7 +879,7 @@ class _OnlineMainHeader extends StatelessWidget {
                 ),
           ),
         ),
-        iconButton(Icons.history_rounded, () => provider.setOnlineSectionIndex(4), tooltip: 'Histórico'),
+        iconButton(Icons.history_rounded, onOpenHistory, tooltip: 'Histórico'),
         iconButton(Icons.search_rounded, onSearch, tooltip: 'Pesquisar'),
         iconButton(Icons.refresh_rounded, onRefresh, tooltip: 'Atualizar'),
         if (provider.isLoggedIn && onOpenAccount != null)
@@ -884,6 +931,695 @@ class _CurrentLibraryView extends StatelessWidget {
       case LibraryTab.online:
         return _OnlineTab(card: card, keyboardOpen: keyboardOpen);
     }
+  }
+}
+
+
+
+List<Widget> _metrolistSongRailSlivers({
+  required BuildContext context,
+  required String title,
+  required List<AudioTrack> songs,
+  int skip = 0,
+  int take = 12,
+}) {
+  final visible = songs.skip(skip).take(take).toList(growable: false);
+  if (visible.isEmpty) return const <Widget>[];
+  return <Widget>[
+    const SliverToBoxAdapter(child: SizedBox(height: 26)),
+    SliverToBoxAdapter(
+      child: _YoutubeSectionHeader(
+        title: title,
+        actionLabel: 'Reproduzir tudo',
+        onActionTap: () => _openTrackPlayer(context, visible.first, queue: songs),
+      ),
+    ),
+    SliverToBoxAdapter(
+      child: SizedBox(
+        height: 184,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          itemCount: visible.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            final track = visible[index];
+            return SizedBox(
+              width: 142,
+              child: _YoutubeMusicTile(
+                title: track.title,
+                subtitle: track.artist,
+                imageUrl: track.artworkUrl ?? '',
+                onTap: () => _openTrackPlayer(context, track, queue: songs),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  ];
+}
+
+List<Widget> _metrolistPlaylistRailSlivers({
+  required BuildContext context,
+  required String title,
+  required List<OnlinePlaylist> playlists,
+  int skip = 0,
+  int take = 12,
+}) {
+  final visible = playlists.skip(skip).take(take).toList(growable: false);
+  if (visible.isEmpty) return const <Widget>[];
+  return <Widget>[
+    const SliverToBoxAdapter(child: SizedBox(height: 26)),
+    SliverToBoxAdapter(child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo')),
+    SliverToBoxAdapter(
+      child: SizedBox(
+        height: 206,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          itemCount: visible.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            final playlist = visible[index];
+            return SizedBox(
+              width: 150,
+              child: _YoutubeMusicTile(
+                title: playlist.title,
+                subtitle: playlist.author,
+                imageUrl: playlist.thumbnailUrl,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist))),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  ];
+}
+
+List<Widget> _metrolistAlbumRailSlivers({
+  required BuildContext context,
+  required String title,
+  required List<OnlineAlbum> albums,
+  int skip = 0,
+  int take = 12,
+}) {
+  final visible = albums.skip(skip).take(take).toList(growable: false);
+  if (visible.isEmpty) return const <Widget>[];
+  return <Widget>[
+    const SliverToBoxAdapter(child: SizedBox(height: 26)),
+    SliverToBoxAdapter(child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo')),
+    SliverToBoxAdapter(
+      child: SizedBox(
+        height: 222,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          itemCount: visible.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            final album = visible[index];
+            return SizedBox(
+              width: 152,
+              child: _OnlineAlbumCard(
+                album: album,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineAlbumScreen(album: album))),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  ];
+}
+
+class _OnlineShellBody extends StatelessWidget {
+  const _OnlineShellBody({
+    required this.index,
+    required this.card,
+    required this.keyboardOpen,
+    required this.onGoHome,
+    required this.onGoSearch,
+    required this.onGoLibrary,
+  });
+
+  final int index;
+  final Color card;
+  final bool keyboardOpen;
+  final VoidCallback onGoHome;
+  final VoidCallback onGoSearch;
+  final VoidCallback onGoLibrary;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (index) {
+      case 1:
+        return _OnlineSearchTab(onGoHome: onGoHome);
+      case 2:
+        return _OnlineLibraryTab(onGoHome: onGoHome, onGoSearch: onGoSearch);
+      case 0:
+      default:
+        return _OnlineTab(card: card, keyboardOpen: keyboardOpen);
+    }
+  }
+}
+
+class _MetrolistBottomNavigation extends StatelessWidget {
+  const _MetrolistBottomNavigation({
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xF0101117) : const Color(0xF7FFFFFF);
+    final selected = Theme.of(context).colorScheme.primary;
+    final unselected = isDark ? Colors.white70 : Colors.black54;
+    return SafeArea(
+      top: false,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: bg,
+            border: Border(top: BorderSide(color: Colors.white.withOpacity(isDark ? 0.06 : 0.0))),
+            boxShadow: const [
+              BoxShadow(color: Color(0x33000000), blurRadius: 24, offset: Offset(0, -10)),
+            ],
+          ),
+          child: Row(
+            children: [
+              _MetrolistNavItem(
+                icon: Icons.home_rounded,
+                label: 'Início',
+                selected: selectedIndex == 0,
+                selectedColor: selected,
+                unselectedColor: unselected,
+                onTap: () => onSelected(0),
+              ),
+              _MetrolistNavItem(
+                icon: Icons.search_rounded,
+                label: 'Pesquisar',
+                selected: selectedIndex == 1,
+                selectedColor: selected,
+                unselectedColor: unselected,
+                onTap: () => onSelected(1),
+              ),
+              _MetrolistNavItem(
+                icon: Icons.library_music_rounded,
+                label: 'Biblioteca',
+                selected: selectedIndex == 2,
+                selectedColor: selected,
+                unselectedColor: unselected,
+                onTap: () => onSelected(2),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MetrolistNavItem extends StatelessWidget {
+  const _MetrolistNavItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.selectedColor,
+    required this.unselectedColor,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final Color selectedColor;
+  final Color unselectedColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? selectedColor : unselectedColor;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+              decoration: BoxDecoration(
+                color: selected ? selectedColor.withOpacity(0.18) : Colors.transparent,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Icon(icon, color: color, size: 27),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: color,
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OnlineSearchTab extends StatefulWidget {
+  const _OnlineSearchTab({required this.onGoHome});
+
+  final VoidCallback onGoHome;
+
+  @override
+  State<_OnlineSearchTab> createState() => _OnlineSearchTabState();
+}
+
+class _OnlineSearchTabState extends State<_OnlineSearchTab> {
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<MusicPlayerProvider>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomPadding = provider.currentTrack == null ? 92.0 : 188.0;
+    final active = provider.onlineActiveQuery.isNotEmpty;
+    final songs = provider.onlineDisplaySongs;
+    final albums = provider.onlineAlbums;
+    final artists = provider.onlineDisplayArtists;
+    final playlists = provider.onlineDisplayPlaylists;
+    final historyTracks = provider.onlineHistoryTracks;
+    final searchHistory = provider.onlineSearchHistory;
+    return Column(
+      children: [
+        _OnlineInlineSearchBar(
+          controller: provider.searchController,
+          onSubmitted: (query) {
+            final cleaned = query.trim();
+            provider.searchController.text = cleaned;
+            provider.searchController.selection = TextSelection.collapsed(offset: cleaned.length);
+            provider.setOnlineSectionIndex(0);
+            if (cleaned.isEmpty) {
+              provider.clearOnlineQuery(reloadHome: false);
+            } else {
+              provider.searchOnline(forceQuery: cleaned, refresh: true);
+            }
+          },
+          onClear: () => provider.clearOnlineQuery(reloadHome: false),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 42,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: const ['Tudo', 'Músicas', 'Álbuns', 'Artistas', 'Playlists'].length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final labels = const ['Tudo', 'Músicas', 'Álbuns', 'Artistas', 'Playlists'];
+              return _YoutubeMusicChip(label: labels[index], onTap: () {});
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              if (!active) ...[
+                if (searchHistory.isNotEmpty) ...[
+                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Histórico de pesquisa')),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final term = searchHistory[index];
+                        return _OnlineSearchHistoryRow(
+                          label: term,
+                          onTap: () {
+                            provider.searchController.text = term;
+                            provider.searchController.selection = TextSelection.collapsed(offset: term.length);
+                            provider.searchOnline(forceQuery: term, refresh: true);
+                          },
+                        );
+                      },
+                      childCount: searchHistory.length,
+                    ),
+                  ),
+                ],
+                if (historyTracks.isNotEmpty) ...[
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Ouvir de novo')),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, rawIndex) {
+                        if (rawIndex.isOdd) return const SizedBox(height: 6);
+                        final index = rawIndex ~/ 2;
+                        final track = historyTracks[index];
+                        return _YoutubeSongRow(
+                          track: track,
+                          isFavorite: provider.isFavorite(track),
+                          onTap: () => _openTrackPlayer(context, track, queue: historyTracks),
+                          onFavoriteTap: () => provider.toggleFavorite(track),
+                        );
+                      },
+                      childCount: (historyTracks.take(8).length * 2 - 1).clamp(0, 99).toInt(),
+                    ),
+                  ),
+                ],
+                if (searchHistory.isEmpty && historyTracks.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(message: 'Pesquise músicas, artistas, álbuns e playlists online.'),
+                  ),
+              ] else ...[
+                if (provider.isOnlineLoading && songs.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty)
+                  const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator())),
+                if (songs.isNotEmpty) ...[
+                  SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Músicas')),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, rawIndex) {
+                        if (rawIndex.isOdd) return const SizedBox(height: 6);
+                        final index = rawIndex ~/ 2;
+                        final track = songs[index];
+                        return _YoutubeSongRow(
+                          track: track,
+                          isFavorite: provider.isFavorite(track),
+                          onTap: () => _openTrackPlayer(context, track, queue: songs),
+                          onFavoriteTap: () => provider.toggleFavorite(track),
+                        );
+                      },
+                      childCount: (songs.take(20).length * 2 - 1).clamp(0, 99).toInt(),
+                    ),
+                  ),
+                ],
+                if (albums.isNotEmpty) ...[
+                  const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Álbuns')),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 205,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: albums.take(12).length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (context, index) {
+                          final album = albums[index];
+                          return SizedBox(
+                            width: 145,
+                            child: _OnlineAlbumCard(
+                              album: album,
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineAlbumScreen(album: album))),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+                if (artists.isNotEmpty) ...[
+                  const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Artistas')),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 160,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: artists.take(12).length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 14),
+                        itemBuilder: (context, index) => _YoutubeArtistBubble(
+                          artist: artists[index],
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineArtistScreen(artist: artists[index]))),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (playlists.isNotEmpty) ...[
+                  const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Playlists')),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 190,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: playlists.take(12).length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (context, index) {
+                          final playlist = playlists[index];
+                          return SizedBox(
+                            width: 142,
+                            child: _YoutubeMusicTile(
+                              title: playlist.title,
+                              subtitle: playlist.author,
+                              imageUrl: playlist.thumbnailUrl,
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist))),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+              SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OnlineSearchHistoryRow extends StatelessWidget {
+  const _OnlineSearchHistoryRow({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: Icon(Icons.history_rounded, color: subtle),
+      title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+      trailing: const Icon(Icons.north_west_rounded, size: 20),
+      onTap: onTap,
+    );
+  }
+}
+
+class _OnlineLibraryTab extends StatelessWidget {
+  const _OnlineLibraryTab({required this.onGoHome, required this.onGoSearch});
+
+  final VoidCallback onGoHome;
+  final VoidCallback onGoSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<MusicPlayerProvider>();
+    final bottomPadding = provider.currentTrack == null ? 92.0 : 188.0;
+    final favorites = provider.onlineFavoriteTracks;
+    final history = provider.onlineHistoryTracks;
+    final playlists = provider.userPlaylists;
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 20),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: const Color(0xFF78A33E),
+                  backgroundImage: provider.isLoggedIn && provider.accountPhoto.trim().isNotEmpty ? NetworkImage(provider.accountPhoto) : null,
+                  child: provider.isLoggedIn && provider.accountPhoto.trim().isNotEmpty
+                      ? null
+                      : Text(
+                          provider.isLoggedIn && provider.accountName.trim().isNotEmpty ? provider.accountName.trim()[0].toUpperCase() : 'H',
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: Colors.white),
+                        ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('HIRUMISU', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
+                      Text('Biblioteca online', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SliverGrid(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 14,
+            childAspectRatio: 1.05,
+          ),
+          delegate: SliverChildListDelegate([
+            _LibraryShortcutCard(
+              icon: Icons.thumb_up_rounded,
+              title: 'Música marcada',
+              subtitle: 'Playlist automática',
+              onTap: () {
+                provider.setOnlineSectionIndex(3);
+                onGoHome();
+              },
+            ),
+            _LibraryShortcutCard(
+              icon: Icons.history_rounded,
+              title: 'Histórico',
+              subtitle: '${history.length} músicas',
+              onTap: () {
+                provider.setOnlineSectionIndex(4);
+                onGoHome();
+              },
+            ),
+          ]),
+        ),
+        if (history.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 26)),
+          SliverToBoxAdapter(
+            child: _YoutubeSectionHeader(
+              title: 'Ouvir de novo',
+              actionLabel: 'Reproduzir tudo',
+              onActionTap: () => _openTrackPlayer(context, history.first, queue: history),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 180,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: history.take(12).length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final track = history[index];
+                  return SizedBox(
+                    width: 138,
+                    child: _YoutubeMusicTile(
+                      title: track.title,
+                      subtitle: track.artist,
+                      imageUrl: track.artworkUrl ?? '',
+                      onTap: () => _openTrackPlayer(context, track, queue: history),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+        if (favorites.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          SliverToBoxAdapter(
+            child: _YoutubeSectionHeader(
+              title: 'Favoritas online',
+              actionLabel: 'Reproduzir tudo',
+              onActionTap: () => _openTrackPlayer(context, favorites.first, queue: favorites),
+            ),
+          ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, rawIndex) {
+                if (rawIndex.isOdd) return const SizedBox(height: 6);
+                final index = rawIndex ~/ 2;
+                final track = favorites[index];
+                return _YoutubeSongRow(
+                  track: track,
+                  isFavorite: provider.isFavorite(track),
+                  onTap: () => _openTrackPlayer(context, track, queue: favorites),
+                  onFavoriteTap: () => provider.toggleFavorite(track),
+                );
+              },
+              childCount: (favorites.take(8).length * 2 - 1).clamp(0, 99).toInt(),
+            ),
+          ),
+        ],
+        if (playlists.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Suas playlists')),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, rawIndex) {
+                if (rawIndex.isOdd) return const SizedBox(height: 8);
+                final index = rawIndex ~/ 2;
+                final playlist = playlists[index];
+                return _UserPlaylistRow(
+                  playlist: playlist,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => UserPlaylistScreen(playlistId: playlist.id))),
+                  onRename: () => _showRenamePlaylistDialog(context, playlist),
+                  onDelete: () => provider.deleteUserPlaylist(playlist.id),
+                );
+              },
+              childCount: (playlists.length * 2 - 1).clamp(0, 999).toInt(),
+            ),
+          ),
+        ],
+        if (history.isEmpty && favorites.isEmpty && playlists.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _EmptyState(message: 'Sua biblioteca online aparece aqui conforme você ouvir, favoritar e criar playlists.'),
+          ),
+        SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
+      ],
+    );
+  }
+}
+
+class _LibraryShortcutCard extends StatelessWidget {
+  const _LibraryShortcutCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Icon(icon, size: 46, color: Theme.of(context).colorScheme.primary),
+              const Spacer(),
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 4),
+              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1418,24 +2154,7 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
   int _sectionIndex = 0;
 
   int _normalizeSectionIndex(int value) {
-    switch (value) {
-      case 0:
-        return 0;
-      case 1:
-        return 0;
-      case 2:
-        return 1;
-      case 3:
-        return 2;
-      case 4:
-        return 3;
-      case 5:
-        return 4;
-      case 6:
-        return 5;
-      default:
-        return value.clamp(0, 5);
-    }
+    return value.clamp(0, 5).toInt();
   }
 
   @override
@@ -1916,6 +2635,66 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
             ),
           ),
         ],
+        ..._metrolistPlaylistRailSlivers(
+          context: context,
+          title: 'Playlists da comunidade em alta',
+          playlists: provider.onlineDisplayPlaylists,
+          skip: 12,
+          take: 12,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Mixtapes criadas para você',
+          songs: songs,
+          skip: 18,
+          take: 12,
+        ),
+        ..._metrolistAlbumRailSlivers(
+          context: context,
+          title: 'Álbuns para você',
+          albums: provider.onlineAlbums,
+          take: 12,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Ouvir de novo',
+          songs: provider.onlineHistoryTracks.isNotEmpty ? provider.onlineHistoryTracks : songs,
+          take: 12,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Lançamentos',
+          songs: songs,
+          skip: 6,
+          take: 12,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Em alta nos Shorts',
+          songs: songs.reversed.toList(growable: false),
+          take: 12,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: songs.isNotEmpty ? 'Parecido com ${songs.first.artist.isEmpty ? songs.first.title : songs.first.artist}' : 'Parecido com o que você ouve',
+          songs: songs,
+          skip: 3,
+          take: 12,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Vídeos de música recomendados',
+          songs: songs,
+          skip: 9,
+          take: 12,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Escolha a dedo',
+          songs: songs,
+          skip: 1,
+          take: 12,
+        ),
         SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
       ],
     );
