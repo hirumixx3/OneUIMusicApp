@@ -169,10 +169,10 @@ object MetrolistNativePlayer {
     }
 
     private fun recoverEndedPlayback(p: ExoPlayer, context: Context) {
-        if (!p.playWhenReady || p.mediaItemCount <= 0) return
+        if (p.mediaItemCount <= 0) return
         mainHandler.post {
             val current = player ?: return@post
-            if (current !== p || current.playbackState != Player.STATE_ENDED || !current.playWhenReady) return@post
+            if (current !== p || current.playbackState != Player.STATE_ENDED) return@post
             when {
                 current.repeatMode == Player.REPEAT_MODE_ONE -> {
                     val index = current.currentMediaItemIndex.coerceAtLeast(0)
@@ -180,11 +180,11 @@ object MetrolistNativePlayer {
                     resumePrepared(current)
                 }
                 current.nextMediaItemIndex != C.INDEX_UNSET -> {
-                    current.seekToNextMediaItem()
+                    current.seekToDefaultPosition(current.nextMediaItemIndex)
                     resumePrepared(current)
                 }
                 current.repeatMode == Player.REPEAT_MODE_ALL && current.mediaItemCount > 0 -> {
-                    current.seekTo(0, 0L)
+                    current.seekToDefaultPosition(0)
                     resumePrepared(current)
                 }
             }
@@ -492,7 +492,8 @@ object MetrolistNativePlayer {
         val p = player
         if (p != null) {
             when {
-                p.nextMediaItemIndex != C.INDEX_UNSET -> p.seekToNextMediaItem()
+                p.nextMediaItemIndex != C.INDEX_UNSET -> p.seekToDefaultPosition(p.nextMediaItemIndex)
+                p.repeatMode == Player.REPEAT_MODE_ALL && p.mediaItemCount > 0 -> p.seekToDefaultPosition(0)
                 p.mediaItemCount > 0 -> p.seekTo(0, 0L)
             }
             resumePrepared(p)
@@ -507,7 +508,7 @@ object MetrolistNativePlayer {
             if (p.currentPosition > 3000L) {
                 p.seekTo(0L)
             } else if (p.previousMediaItemIndex != C.INDEX_UNSET) {
-                p.seekToPreviousMediaItem()
+                p.seekToDefaultPosition(p.previousMediaItemIndex)
             } else {
                 p.seekTo(0L)
             }

@@ -1174,6 +1174,25 @@ class MusicPlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> clearOnlineQuery({bool reloadHome = true}) async {
+    searchController.clear();
+    if (_lastOnlineQuery.isEmpty && _onlineSectionIndex == 0) {
+      if (reloadHome && !_hasOnlineHomeContent() && !_isOnlineLoading) {
+        unawaited(searchOnline(forceQuery: '', refresh: true));
+      }
+      notifyListeners();
+      return;
+    }
+    _lastOnlineQuery = '';
+    _onlineSectionIndex = 0;
+    await _prefs?.setInt(_onlineSectionKey, 0);
+    _onlineError = null;
+    notifyListeners();
+    if (reloadHome && (!_hasOnlineHomeContent() || _onlineSongs.isEmpty) && !_isOnlineLoading) {
+      unawaited(searchOnline(forceQuery: '', refresh: true));
+    }
+  }
+
   int _normalizeOnlineSectionIndex(int value) {
     switch (value) {
       case 0:
@@ -1900,8 +1919,9 @@ class MusicPlayerProvider extends ChangeNotifier {
     notifyListeners();
     if (tabValue == LibraryTab.online && !_isOnlineLoading) {
       final hasOnlineContent = _hasOnlineHomeContent();
-      if (!hasOnlineContent || _lastOnlineQuery.isEmpty) {
-        unawaited(searchOnline(forceQuery: searchController.text, refresh: !hasOnlineContent || _lastOnlineQuery.isEmpty));
+      final query = _lastOnlineQuery.trim();
+      if (!hasOnlineContent || query.isEmpty) {
+        unawaited(searchOnline(forceQuery: query, refresh: !hasOnlineContent || query.isEmpty));
       }
     }
   }
@@ -2301,6 +2321,43 @@ class MusicPlayerProvider extends ChangeNotifier {
       var mergedArtists = result.artists;
       var mergedPlaylists = result.playlists;
 
+      if (rawQuery.isEmpty && mergedSongs.isEmpty) {
+        // A home do Innertube às vezes traz só playlists/chips ou demora para
+        // devolver músicas. Para a aba Online nunca abrir “vazia”, reforçamos
+        // com buscas leves no mesmo módulo do Metrolist, sem bloquear o clique
+        // no player e sem depender de conta Google.
+        final fallbackTerms = <String>[
+          ..._onlineSearchHistory.take(3),
+          ..._topPreferredArtists(limit: 3),
+          'hits Brasil',
+          'músicas em alta',
+          'lançamentos música',
+          'pop internacional',
+          'funk hits',
+          'sertanejo universitário',
+        ];
+        final seenFallbackTerms = <String>{};
+        for (final term in fallbackTerms) {
+          final query = term.trim();
+          if (query.isEmpty || !seenFallbackTerms.add(query.toLowerCase())) continue;
+          try {
+            final extraSongs = await _searchSongsNative(query).timeout(const Duration(seconds: 4));
+            mergedSongs = _dedupeTracks(<AudioTrack>[...mergedSongs, ...extraSongs]);
+            if (mergedSongs.length >= 18) break;
+          } catch (_) {}
+        }
+      }
+
+      if (rawQuery.isEmpty && mergedPlaylists.isEmpty) {
+        for (final term in const <String>['mixes Brasil', 'playlists para você', 'músicas populares']) {
+          try {
+            final extraPlaylists = await _searchPlaylistsNative(term).timeout(const Duration(seconds: 4));
+            mergedPlaylists = _dedupePlaylists(<OnlinePlaylist>[...mergedPlaylists, ...extraPlaylists]);
+            if (mergedPlaylists.length >= 10) break;
+          } catch (_) {}
+        }
+      }
+
       if (rawQuery.isNotEmpty) {
         // O searchSummary do Innertube às vezes devolve poucos cards. Reforça
         // com as buscas filtradas do Metrolist para músicas, álbuns, artistas
@@ -2378,6 +2435,22 @@ class MusicPlayerProvider extends ChangeNotifier {
             _onlineAlbums = const <OnlineAlbum>[];
             _onlineArtists = fallbackArtists;
             _onlinePlaylists = fallbackPlaylists;
+            _onlineError = null;
+            return;
+          }
+        } catch (_) {}
+      } else {
+        try {
+          final fallbackSongs = await _searchSongsNative('músicas em alta Brasil').timeout(const Duration(seconds: 6));
+          final fallbackPlaylists = await _searchPlaylistsNative('mixes e playlists música').timeout(const Duration(seconds: 5));
+          if (requestId == _onlineSearchRequestSerial && (fallbackSongs.isNotEmpty || fallbackPlaylists.isNotEmpty)) {
+            _lastOnlineQuery = '';
+            _onlineSongs = _dedupeTracks(<AudioTrack>[...previousSongs, ...fallbackSongs]);
+            _onlineAlbums = previousAlbums;
+            _onlineArtists = previousArtists;
+            _onlinePlaylists = _dedupePlaylists(<OnlinePlaylist>[...previousPlaylists, ...fallbackPlaylists]);
+            _onlineRecommendedSongs = _rankOnlineRecommendedSongs(_onlineSongs).take(80).toList(growable: false);
+            _onlineRecommendedPlaylists = _dedupePlaylists(_onlinePlaylists).take(40).toList(growable: false);
             _onlineError = null;
             return;
           }

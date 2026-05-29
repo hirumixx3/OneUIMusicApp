@@ -275,6 +275,27 @@ class _OnlineAccountSheet extends StatefulWidget {
 class _OnlineAccountSheetState extends State<_OnlineAccountSheet> {
   bool _loading = false;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
@@ -445,6 +466,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -456,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final hasFloatingPlayer = provider.currentTrack != null && !keyboardOpen;
-    final bottomPlayerReserve = keyboardOpen ? 8.0 : (hasFloatingPlayer ? 92.0 : 0.0);
+    final bottomPlayerReserve = keyboardOpen ? 8.0 : (hasFloatingPlayer ? 104.0 : 0.0);
 
     if (_controller.index != provider.tab.index && !_controller.indexIsChanging) {
       _controller.index = provider.tab.index;
@@ -464,8 +506,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     final onlineMain = provider.tab == LibraryTab.online;
 
-    return Scaffold(
-      backgroundColor: bg,
+    return WillPopScope(
+      onWillPop: _handleSystemBack,
+      child: Scaffold(
+        backgroundColor: bg,
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -478,7 +522,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     _OnlineMainHeader(
                       isDark: isDark,
                       onSearch: () => _showOnlineSearchSheet(context),
-                      onRefresh: () => provider.searchOnline(forceQuery: provider.searchController.text, refresh: true),
+                      onRefresh: () {
+                        final query = provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text.trim() : '';
+                        provider.searchOnline(forceQuery: query, refresh: true);
+                      },
                       onOpenEqualizer: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen())),
                       onOpenAccount: provider.isLoggedIn ? () => _showOnlineAccountSheet(context) : null,
                       onOpenMenu: () => _showOnlineNavigationSheet(context, provider),
@@ -585,7 +632,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   child: _CurrentLibraryView(card: card, keyboardOpen: keyboardOpen),
                                 ),
                     ),
-                    SizedBox(height: keyboardOpen ? 12 : (hasFloatingPlayer ? 112 : 12)),
+                    SizedBox(height: keyboardOpen ? 12 : (hasFloatingPlayer ? 104 : 12)),
                   ],
                 ),
               ),
@@ -596,6 +643,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -661,7 +709,7 @@ void _showOnlineNavigationSheet(BuildContext context, MusicPlayerProvider provid
 
 Future<void> _showOnlineSearchSheet(BuildContext context) async {
   final provider = context.read<MusicPlayerProvider>();
-  final controller = TextEditingController(text: provider.searchController.text);
+  final controller = TextEditingController(text: provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text : '');
   try {
     await showModalBottomSheet<void>(
       context: context,
@@ -698,7 +746,11 @@ Future<void> _showOnlineSearchSheet(BuildContext context) async {
                     final query = value.trim();
                     provider.searchController.text = query;
                     provider.setOnlineSectionIndex(0);
-                    provider.searchOnline(forceQuery: query, refresh: true);
+                    if (query.isEmpty) {
+                      provider.clearOnlineQuery();
+                    } else {
+                      provider.searchOnline(forceQuery: query, refresh: true);
+                    }
                     Navigator.of(sheetContext).pop();
                   },
                 ),
@@ -709,7 +761,12 @@ Future<void> _showOnlineSearchSheet(BuildContext context) async {
                     onPressed: () {
                       final query = controller.text.trim();
                       provider.searchController.text = query;
-                      provider.searchOnline(forceQuery: query, refresh: true);
+                      provider.setOnlineSectionIndex(0);
+                      if (query.isEmpty) {
+                        provider.clearOnlineQuery();
+                      } else {
+                        provider.searchOnline(forceQuery: query, refresh: true);
+                      }
                       Navigator.of(sheetContext).pop();
                     },
                     icon: const Icon(Icons.search_rounded),
@@ -743,6 +800,27 @@ class _OnlineMainHeader extends StatelessWidget {
   final VoidCallback onOpenEqualizer;
   final VoidCallback onOpenMenu;
   final VoidCallback? onOpenAccount;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -811,6 +889,27 @@ class _CurrentLibraryView extends StatelessWidget {
   final Color card;
   final bool keyboardOpen;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -849,6 +948,27 @@ class _TracksTabState extends State<_TracksTab> with AutomaticKeepAliveClientMix
       ..addListener(() {
         provider.updateScrollOffset(LibraryTab.tracks, _controller.offset);
       });
+  }
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
   }
 
   @override
@@ -909,6 +1029,27 @@ class _AlbumsTabState extends State<_AlbumsTab> with AutomaticKeepAliveClientMix
       ..addListener(() {
         provider.updateScrollOffset(LibraryTab.albums, _controller.offset);
       });
+  }
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
   }
 
   @override
@@ -983,6 +1124,27 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
       ..addListener(() {
         provider.updateScrollOffset(LibraryTab.artists, _controller.offset);
       });
+  }
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
   }
 
   @override
@@ -1222,6 +1384,27 @@ class _FavoritesTabState extends State<_FavoritesTab> with AutomaticKeepAliveCli
       });
   }
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -1317,9 +1500,31 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
       final hasImmediateOnlineContent =
           provider.onlineDisplaySongs.isNotEmpty && provider.onlineDisplayArtists.isNotEmpty && provider.onlineDisplayPlaylists.isNotEmpty;
       if (!hasImmediateOnlineContent || provider.onlineActiveQuery.isNotEmpty) {
-        provider.searchOnline(refresh: !hasImmediateOnlineContent);
+        final query = provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text.trim() : '';
+        provider.searchOnline(forceQuery: query, refresh: !hasImmediateOnlineContent || query.isNotEmpty);
       }
     });
+  }
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
   }
 
   @override
@@ -1518,89 +1723,44 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
       }
     }
 
+    final sectionTitle = switch (_sectionIndex) {
+      1 => 'Artistas',
+      2 => 'Playlists',
+      3 => 'Favoritos online',
+      4 => 'Histórico',
+      5 => 'Minhas playlists',
+      _ => '',
+    };
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!keyboardOpen && !(provider.onlineActiveQuery.isEmpty && _sectionIndex == 0)) ...[
-          Text(
-            t.online,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+        if (provider.onlineActiveQuery.isNotEmpty) ...[
+          _OnlineInlineSearchBar(
+            controller: provider.searchController,
+            onSubmitted: (query) {
+              final cleaned = query.trim();
+              provider.searchController.text = cleaned;
+              provider.searchController.selection = TextSelection.collapsed(offset: cleaned.length);
+              setState(() => _sectionIndex = 0);
+              provider.setOnlineSectionIndex(0);
+              provider.searchOnline(forceQuery: cleaned, refresh: true);
+            },
+            onClear: () {
+              setState(() => _sectionIndex = 0);
+              provider.clearOnlineQuery();
+            },
           ),
-          const SizedBox(height: 10),
-          Text(
-            provider.onlineActiveQuery.isEmpty
-                ? t.onlineIntroRecommendations
-                : t.onlineIntroResults,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subtle),
+          const SizedBox(height: 12),
+        ] else if (_sectionIndex != 0) ...[
+          _OnlineSubPageHeader(
+            title: sectionTitle,
+            onBack: () {
+              setState(() => _sectionIndex = 0);
+              provider.setOnlineSectionIndex(0);
+            },
           ),
-          const SizedBox(height: 14),
-          if (provider.onlineSearchHistory.isNotEmpty) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    t.recentSearches,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    provider.clearOnlineSearchHistory();
-                  },
-                  child: Text(t.clear),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final item in provider.onlineSearchHistory.take(8)) ...[
-                    ActionChip(
-                      label: Text(item),
-                      onPressed: () {
-                        provider.searchController.text = item;
-                        provider.searchController.selection = TextSelection.collapsed(offset: item.length);
-                        provider.searchOnline(forceQuery: item, refresh: true);
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _OnlineSectionChip(label: t.songs, selected: _sectionIndex == 0, onTap: () { setState(() => _sectionIndex = 0); provider.setOnlineSectionIndex(0); }),
-                const SizedBox(width: 10),
-                _OnlineSectionChip(label: t.artists, selected: _sectionIndex == 1, onTap: () { setState(() => _sectionIndex = 1); provider.setOnlineSectionIndex(1); }),
-                const SizedBox(width: 10),
-                _OnlineSectionChip(label: t.playlists, selected: _sectionIndex == 2, onTap: () { setState(() => _sectionIndex = 2); provider.setOnlineSectionIndex(2); }),
-                const SizedBox(width: 10),
-                _OnlineSectionChip(label: t.favorites, selected: _sectionIndex == 3, onTap: () { setState(() => _sectionIndex = 3); provider.setOnlineSectionIndex(3); }),
-                const SizedBox(width: 10),
-                _OnlineSectionChip(label: t.history, selected: _sectionIndex == 4, onTap: () { setState(() => _sectionIndex = 4); provider.setOnlineSectionIndex(4); }),
-                const SizedBox(width: 10),
-                _OnlineSectionChip(label: t.mine, selected: _sectionIndex == 5, onTap: () { setState(() => _sectionIndex = 5); provider.setOnlineSectionIndex(5); }),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (_sectionIndex == 5)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: FilledButton.icon(
-                onPressed: () => _showCreatePlaylistDialog(context),
-                icon: const Icon(Icons.add_rounded),
-                label: Text(t.createPlaylist),
-              ),
-            ),
+          const SizedBox(height: 12),
         ],
         Expanded(child: content),
       ],
@@ -1617,6 +1777,7 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
     required double bottomPadding,
   }) {
     final featuredSongs = songs.take(12).toList(growable: false);
+    final featuredPlaylists = playlists.take(12).toList(growable: false);
     final pickSongs = songs.skip(12).take(24).toList(growable: false);
     final moodChips = const <String, String>{
       'Podcasts': 'podcasts música Brasil',
@@ -1626,8 +1787,8 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
       'Foco': 'músicas para foco',
       'Para dormir': 'músicas para dormir',
     };
-    final loadingEmptyHome = provider.isOnlineLoading && featuredSongs.isEmpty;
-    final emptyHome = !loadingEmptyHome && featuredSongs.isEmpty;
+    final loadingEmptyHome = provider.isOnlineLoading && featuredSongs.isEmpty && featuredPlaylists.isEmpty;
+    final emptyHome = !loadingEmptyHome && featuredSongs.isEmpty && featuredPlaylists.isEmpty && artists.isEmpty;
     return CustomScrollView(
       key: const PageStorageKey('online_youtube_music_home'),
       controller: _controller,
@@ -1678,7 +1839,7 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
               onRetry: () => provider.searchOnline(refresh: true),
             ),
           ),
-        if (featuredSongs.isNotEmpty || loadingEmptyHome)
+        if (featuredSongs.isNotEmpty || featuredPlaylists.isNotEmpty || loadingEmptyHome)
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             sliver: SliverGrid(
@@ -1690,50 +1851,64 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  if (featuredSongs.isEmpty) {
-                    return const _YoutubeLoadingTile();
+                  if (featuredSongs.isNotEmpty) {
+                    final track = featuredSongs[index];
+                    return _YoutubeMusicTile(
+                      title: track.title,
+                      imageUrl: track.artworkUrl ?? '',
+                      onTap: () => _openTrackPlayer(context, track, queue: songs),
+                    );
                   }
-                  final track = featuredSongs[index];
-                  return _YoutubeMusicTile(
-                    title: track.title,
-                    imageUrl: track.artworkUrl ?? '',
-                    onTap: () => _openTrackPlayer(context, track, queue: songs),
-                  );
+                  if (featuredPlaylists.isNotEmpty) {
+                    final playlist = featuredPlaylists[index];
+                    return _YoutubeMusicTile(
+                      title: playlist.title,
+                      imageUrl: playlist.thumbnailUrl,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist))),
+                    );
+                  }
+                  return const _YoutubeLoadingTile();
                 },
-                childCount: featuredSongs.isEmpty ? 9 : featuredSongs.length.clamp(0, 9).toInt(),
+                childCount: featuredSongs.isNotEmpty
+                    ? featuredSongs.length.clamp(0, 9).toInt()
+                    : featuredPlaylists.isNotEmpty
+                        ? featuredPlaylists.length.clamp(0, 9).toInt()
+                        : 9,
               ),
             ),
           ),
-        const SliverToBoxAdapter(child: SizedBox(height: 26)),
-        SliverToBoxAdapter(
-          child: _YoutubeSectionHeader(
-            title: 'Escolhas rápidas',
-            actionLabel: songs.isEmpty ? null : 'Ver tudo',
-            onActionTap: songs.isEmpty ? null : () => _openTrackPlayer(context, songs.first, queue: songs),
+        if (songs.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 26)),
+          SliverToBoxAdapter(
+            child: _YoutubeSectionHeader(
+              title: 'Escolhas rápidas',
+              actionLabel: 'Ver tudo',
+              onActionTap: () => _openTrackPlayer(context, songs.first, queue: songs),
+            ),
           ),
-        ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, rawIndex) {
-              final list = pickSongs.isEmpty ? songs : pickSongs;
-              final itemCount = list.take(12).length;
-              if (rawIndex.isOdd) return const SizedBox(height: 6);
-              final index = rawIndex ~/ 2;
-              if (index >= itemCount) return const SizedBox.shrink();
-              final track = list[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _YoutubeSongRow(
-                  track: track,
-                  isFavorite: provider.isFavorite(track),
-                  onTap: () => _openTrackPlayer(context, track, queue: songs),
-                  onFavoriteTap: () => provider.toggleFavorite(track),
-                ),
-              );
-            },
-            childCount: ((pickSongs.isEmpty ? songs : pickSongs).take(12).length * 2 - 1).clamp(0, 999).toInt(),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, rawIndex) {
+                final list = pickSongs.isEmpty ? songs : pickSongs;
+                final itemCount = list.take(12).length;
+                if (rawIndex.isOdd) return const SizedBox(height: 6);
+                final index = rawIndex ~/ 2;
+                if (index >= itemCount) return const SizedBox.shrink();
+                final track = list[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _YoutubeSongRow(
+                    track: track,
+                    isFavorite: provider.isFavorite(track),
+                    onTap: () => _openTrackPlayer(context, track, queue: songs),
+                    onFavoriteTap: () => provider.toggleFavorite(track),
+                  ),
+                );
+              },
+              childCount: ((pickSongs.isEmpty ? songs : pickSongs).take(12).length * 2 - 1).clamp(0, 999).toInt(),
+            ),
           ),
-        ),
+        ],
         if (playlists.isNotEmpty) ...[
           const SliverToBoxAdapter(child: SizedBox(height: 26)),
           const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Mixes e playlists')),
@@ -1800,10 +1975,100 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
 }
 
 
+
+class _OnlineInlineSearchBar extends StatelessWidget {
+  const _OnlineInlineSearchBar({
+    required this.controller,
+    required this.onSubmitted,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
+      ),
+      child: TextField(
+        controller: controller,
+        textInputAction: TextInputAction.search,
+        onSubmitted: onSubmitted,
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: IconButton(
+            tooltip: 'Limpar busca',
+            icon: const Icon(Icons.close_rounded),
+            onPressed: onClear,
+          ),
+          hintText: 'Buscar músicas online...',
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+        ),
+      ),
+    );
+  }
+}
+
+class _OnlineSubPageHeader extends StatelessWidget {
+  const _OnlineSubPageHeader({required this.title, required this.onBack});
+
+  final String title;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: onBack,
+          icon: const Icon(Icons.arrow_back_rounded),
+          tooltip: 'Voltar',
+        ),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _AppAdaptiveIcon extends StatelessWidget {
   const _AppAdaptiveIcon({this.size = 40});
 
   final double size;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1833,6 +2098,27 @@ class _YoutubeMusicChip extends StatelessWidget {
 
   final String label;
   final VoidCallback onTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1864,6 +2150,27 @@ class _YoutubeSectionHeader extends StatelessWidget {
   final String title;
   final String? actionLabel;
   final VoidCallback? onActionTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1897,6 +2204,27 @@ class _OnlineEmptyHomeCard extends StatelessWidget {
 
   final String message;
   final VoidCallback onRetry;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1933,6 +2261,27 @@ class _OnlineEmptyHomeCard extends StatelessWidget {
 
 class _YoutubeLoadingTile extends StatelessWidget {
   const _YoutubeLoadingTile();
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1985,6 +2334,27 @@ class _YoutubeMusicTile extends StatelessWidget {
   final String? subtitle;
   final String imageUrl;
   final VoidCallback onTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2060,6 +2430,27 @@ class _YoutubeSongRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onFavoriteTap;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white60 : Colors.black54;
@@ -2083,6 +2474,27 @@ class _YoutubeArtistBubble extends StatelessWidget {
 
   final OnlineArtist artist;
   final VoidCallback onTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2113,6 +2525,27 @@ class _OnlineSectionChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2146,6 +2579,27 @@ class _OnlineAlbumCard extends StatelessWidget {
 
   final OnlineAlbum album;
   final VoidCallback onTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2210,6 +2664,27 @@ class _OnlineArtistRow extends StatelessWidget {
 
   final OnlineArtist artist;
   final VoidCallback onTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2277,6 +2752,27 @@ class _OnlinePlaylistRow extends StatelessWidget {
 
   final OnlinePlaylist playlist;
   final VoidCallback onTap;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2351,6 +2847,27 @@ class _RemoteArtworkBox extends StatelessWidget {
   final double? size;
   final double radius;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -2394,6 +2911,27 @@ class OnlineAlbumScreen extends StatelessWidget {
   const OnlineAlbumScreen({super.key, required this.album});
 
   final OnlineAlbum album;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2472,6 +3010,27 @@ class OnlineArtistScreen extends StatelessWidget {
   const OnlineArtistScreen({super.key, required this.artist});
 
   final OnlineArtist artist;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2602,6 +3161,27 @@ class _OnlineSectionHeader extends StatelessWidget {
   final String actionLabel;
   final VoidCallback onActionTap;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -2625,6 +3205,27 @@ class OnlineArtistAllSongsScreen extends StatelessWidget {
   const OnlineArtistAllSongsScreen({super.key, required this.page});
 
   final OnlineArtistPage page;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2695,6 +3296,27 @@ class OnlineArtistAllAlbumsScreen extends StatelessWidget {
   const OnlineArtistAllAlbumsScreen({super.key, required this.page});
 
   final OnlineArtistPage page;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2769,6 +3391,27 @@ class OnlinePlaylistScreen extends StatelessWidget {
   const OnlinePlaylistScreen({super.key, required this.playlist});
 
   final OnlinePlaylist playlist;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2859,6 +3502,27 @@ class _UserPlaylistRow extends StatelessWidget {
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -2944,6 +3608,27 @@ class UserPlaylistScreen extends StatelessWidget {
   const UserPlaylistScreen({super.key, required this.playlistId});
 
   final String playlistId;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3069,6 +3754,27 @@ class ArtistDetailScreen extends StatelessWidget {
 
   final String artistName;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -3185,6 +3891,27 @@ class AlbumDetailScreen extends StatelessWidget {
   final String albumKey;
   final List<AudioTrack> tracks;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -3285,6 +4012,27 @@ class _AlbumCard extends StatelessWidget {
   final List<AudioTrack> tracks;
   final VoidCallback onTap;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -3351,6 +4099,27 @@ class _ArtworkCard extends StatelessWidget {
   final AudioTrack track;
   final bool albumMode;
 
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
@@ -3382,6 +4151,27 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.message});
 
   final String message;
+
+  Future<bool> _handleSystemBack() async {
+    final provider = context.read<MusicPlayerProvider>();
+    if (provider.tab == LibraryTab.online) {
+      if (provider.onlineActiveQuery.isNotEmpty) {
+        await provider.clearOnlineQuery();
+        return false;
+      }
+      if (provider.onlineSectionIndex != 0) {
+        provider.setOnlineSectionIndex(0);
+        return false;
+      }
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    if (provider.tab != LibraryTab.tracks) {
+      provider.setTab(LibraryTab.tracks);
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
