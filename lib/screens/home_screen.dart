@@ -1186,6 +1186,8 @@ class _OnlineSearchTab extends StatefulWidget {
 }
 
 class _OnlineSearchTabState extends State<_OnlineSearchTab> {
+  int _filterIndex = 0;
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
@@ -1196,6 +1198,11 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
     final albums = provider.onlineAlbums;
     final artists = provider.onlineDisplayArtists;
     final playlists = provider.onlineDisplayPlaylists;
+    final showAll = _filterIndex == 0;
+    final showSongs = showAll || _filterIndex == 1;
+    final showAlbums = showAll || _filterIndex == 2;
+    final showArtists = showAll || _filterIndex == 3;
+    final showPlaylists = showAll || _filterIndex == 4;
     final historyTracks = provider.onlineHistoryTracks;
     final searchHistory = provider.onlineSearchHistory;
     return Column(
@@ -1224,7 +1231,11 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final labels = const ['Tudo', 'Músicas', 'Álbuns', 'Artistas', 'Playlists'];
-              return _YoutubeMusicChip(label: labels[index], onTap: () {});
+              return _YoutubeMusicChip(
+                label: labels[index],
+                selected: _filterIndex == index,
+                onTap: () => setState(() => _filterIndex = index),
+              );
             },
           ),
         ),
@@ -1280,7 +1291,7 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
               ] else ...[
                 if (provider.isOnlineLoading && songs.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty)
                   const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator())),
-                if (songs.isNotEmpty) ...[
+                if (showSongs && songs.isNotEmpty) ...[
                   SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Músicas')),
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
@@ -1299,7 +1310,7 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
                     ),
                   ),
                 ],
-                if (albums.isNotEmpty) ...[
+                if (showAlbums && albums.isNotEmpty) ...[
                   const SliverToBoxAdapter(child: SizedBox(height: 22)),
                   const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Álbuns')),
                   SliverToBoxAdapter(
@@ -1323,7 +1334,7 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
                     ),
                   ),
                 ],
-                if (artists.isNotEmpty) ...[
+                if (showArtists && artists.isNotEmpty) ...[
                   const SliverToBoxAdapter(child: SizedBox(height: 22)),
                   const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Artistas')),
                   SliverToBoxAdapter(
@@ -1341,7 +1352,7 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
                     ),
                   ),
                 ],
-                if (playlists.isNotEmpty) ...[
+                if (showPlaylists && playlists.isNotEmpty) ...[
                   const SliverToBoxAdapter(child: SizedBox(height: 22)),
                   const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Playlists')),
                   SliverToBoxAdapter(
@@ -1367,6 +1378,20 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
                     ),
                   ),
                 ],
+                if (!provider.isOnlineLoading &&
+                    ((showSongs && songs.isNotEmpty) ||
+                            (showAlbums && albums.isNotEmpty) ||
+                            (showArtists && artists.isNotEmpty) ||
+                            (showPlaylists && playlists.isNotEmpty)) ==
+                        false)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(
+                      message: _filterIndex == 0
+                          ? 'Nenhum resultado encontrado.'
+                          : 'Nenhum resultado nesse filtro.',
+                    ),
+                  ),
               ],
               SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
             ],
@@ -2789,28 +2814,37 @@ class _AppAdaptiveIcon extends StatelessWidget {
 }
 
 class _YoutubeMusicChip extends StatelessWidget {
-  const _YoutubeMusicChip({required this.label, required this.onTap});
+  const _YoutubeMusicChip({required this.label, required this.onTap, this.selected = false});
 
   final String label;
   final VoidCallback onTap;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = Theme.of(context).colorScheme.primary;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.08),
+            color: selected
+                ? accent.withOpacity(isDark ? 0.28 : 0.18)
+                : (isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.08)),
             borderRadius: BorderRadius.circular(14),
+            border: selected ? Border.all(color: accent.withOpacity(0.55)) : null,
           ),
           child: Text(
             label,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: selected ? accent : null,
+                ),
           ),
         ),
       ),
