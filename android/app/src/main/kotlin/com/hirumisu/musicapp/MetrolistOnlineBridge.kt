@@ -22,6 +22,8 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 import timber.log.Timber
 
 /**
@@ -30,6 +32,13 @@ import timber.log.Timber
  */
 object MetrolistOnlineBridge {
     @Volatile private var initialized = false
+    private val quickHttpClient by lazy {
+        MetrolistStreamResolver.httpClient.newBuilder()
+            .connectTimeout(4, TimeUnit.SECONDS)
+            .readTimeout(6, TimeUnit.SECONDS)
+            .writeTimeout(6, TimeUnit.SECONDS)
+            .build()
+    }
 
     private fun ensureInitialized(context: Context) {
         if (!initialized) {
@@ -135,6 +144,276 @@ object MetrolistOnlineBridge {
         val query = runCatching { URLDecoder.decode(raw.substring(0, split), StandardCharsets.UTF_8.name()) }.getOrNull() ?: return null
         val page = raw.substring(split + 2).toIntOrNull() ?: return null
         return query to page.coerceAtLeast(1)
+    }
+
+
+    private fun decodeWebText(value: String?): String {
+        if (value.isNullOrBlank()) return ""
+        return value
+            .replace("\\u0026", "&")
+            .replace("\\/", "/")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("\\n", " ")
+            .replace(Regex("\\\\u([0-9a-fA-F]{4})")) { match ->
+                runCatching { match.groupValues[1].toInt(16).toChar().toString() }.getOrDefault(match.value)
+            }
+            .trim()
+    }
+
+    private fun parseDurationMs(value: String?): Long {
+        val text = decodeWebText(value).trim()
+        if (text.isBlank()) return 0L
+        val parts = text.split(':').mapNotNull { it.trim().toLongOrNull() }
+        if (parts.isEmpty()) return 0L
+        var seconds = 0L
+        for (part in parts) seconds = seconds * 60L + part
+        return seconds * 1000L
+    }
+
+    private fun fallbackSongMap(
+        id: String,
+        title: String,
+        artist: String,
+        thumbnail: String,
+        durationMs: Long = 0L,
+    ): Map<String, Any?> = mapOf(
+        "id" to id,
+        "uri" to "",
+        "title" to title.ifBlank { "YouTube Music" },
+        "artist" to artist.ifBlank { "YouTube Music" },
+        "album" to "YouTube Music",
+        "duration" to durationMs,
+        "path" to "",
+        "mimeType" to "audio/webm",
+        "dateAdded" to 0,
+        "dateModified" to 0,
+        "artworkUrl" to highQualityThumbnail(thumbnail.ifBlank { "https://i.ytimg.com/vi/$id/hqdefault.jpg" }),
+        "isRemote" to true,
+        "remoteStreamUri" to "",
+        "videoId" to id,
+        "artistId" to null,
+        "browseId" to null,
+        "trackNumber" to null,
+    )
+
+    private fun mergeSongMaps(items: List<Map<String, Any?>>): List<Map<String, Any?>> =
+        items.distinctBy { (it["videoId"] ?: it["id"] ?: it["title"]).toString() }
+
+    private fun isLikelyBadWebResult(title: String, artist: String): Boolean {
+        val text = "$title $artist".lowercase(Locale.ROOT)
+        if (text.contains("reaction") || text.contains("tutorial") || text.contains("karaoke")) return true
+        if (text.contains("cover") && !text.contains("official")) return true
+        if (text.contains("podcast") || text.contains("interview")) return true
+        return false
+    }
+
+    private fun webSearchQueries(query: String, page: Int): List<String> {
+        val base = expandedSongQueries(query).ifEmpty { queryVariants(query) }
+        val suffixes = listOf(
+            "official audio", "topic", "lyrics", "song", "audio", "album", "music", "official", "live", "remix", "playlist", "full album",
+        )
+        val all = linkedSetOf<String>()
+        base.forEach { all += it }
+        queryVariants(query).forEach { q -> suffixes.forEach { suffix -> all += "$q $suffix" } }
+        val start = (page.coerceAtLeast(0) * 3).coerceAtMost(all.size)
+        return all.drop(start).take(3).ifEmpty { queryVariants(query).take(1) }
+    }
+
+    private fun JSONObject.findObjectKeys(name: String, out: MutableList<JSONObject>) {
+        val keys = keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = opt(key)
+            if (key == name && value is JSONObject) out += value
+            when (value) {
+                is JSONObject -> value.findObjectKeys(name, out)
+                is JSONArray -> value.findObjectKeys(name, out)
+            }
+        }
+    }
+
+    private fun JSONArray.findObjectKeys(name: String, out: MutableList<JSONObject>) {
+        for (i in 0 until length()) {
+            when (val value = opt(i)) {
+                is JSONObject -> value.findObjectKeys(name, out)
+                is JSONArray -> value.findObjectKeys(name, out)
+            }
+        }
+    }
+
+    private fun runsText(obj: JSONObject?): String {
+        if (obj == null) return ""
+        val runs = obj.optJSONArray("runs") ?: return decodeWebText(obj.optString("simpleText", ""))
+        val parts = mutableListOf<String>()
+        for (i in 0 until runs.length()) {
+            val text = runs.optJSONObject(i)?.optString("text", "").orEmpty()
+            if (text.isNotBlank() && text != "•" && text != "·") parts += decodeWebText(text)
+        }
+        return parts.joinToString(" ").replace(Regex("\\s+"), " ").trim()
+    }
+
+    private fun parseMusicResponsiveSong(renderer: JSONObject): Map<String, Any?>? {
+        val id = renderer.optJSONObject("playlistItemData")?.optString("videoId")?.takeIf { it.isNotBlank() }
+            ?: renderer.optJSONObject("overlay")
+                ?.optJSONObject("musicItemThumbnailOverlayRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("musicPlayButtonRenderer")
+                ?.optJSONObject("playNavigationEndpoint")
+                ?.optJSONObject("watchEndpoint")
+                ?.optString("videoId")
+                ?.takeIf { it.isNotBlank() }
+            ?: renderer.optJSONObject("navigationEndpoint")
+                ?.optJSONObject("watchEndpoint")
+                ?.optString("videoId")
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val columns = renderer.optJSONArray("flexColumns") ?: return null
+        val title = runsText(
+            columns.optJSONObject(0)
+                ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
+                ?.optJSONObject("text")
+        )
+        if (title.isBlank()) return null
+        val subtitle = runsText(
+            columns.optJSONObject(1)
+                ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
+                ?.optJSONObject("text")
+        )
+        val parts = subtitle.split(Regex("\\s+[•·]\\s+|\\s+•\\s+|\\s+·\\s+")).map { it.trim() }.filter { it.isNotBlank() }
+        val artist = parts.firstOrNull { part ->
+            val low = part.lowercase(Locale.ROOT)
+            low !in setOf("song", "songs", "video", "videos", "music video", "album", "single", "playlist", "música", "vídeo") &&
+                !low.contains("views") && !low.contains("visualizações") && !low.matches(Regex("\\d+:\\d+"))
+        } ?: parts.firstOrNull().orEmpty()
+        val thumbs = renderer.optJSONObject("thumbnail")
+            ?.optJSONObject("musicThumbnailRenderer")
+            ?.optJSONObject("thumbnail")
+            ?.optJSONArray("thumbnails")
+        val thumb = if (thumbs != null && thumbs.length() > 0) {
+            thumbs.optJSONObject(thumbs.length() - 1)?.optString("url", "").orEmpty()
+        } else ""
+        val durationText = parts.lastOrNull { it.matches(Regex("\\d{1,2}:\\d{2}(?::\\d{2})?")) }.orEmpty()
+        if (isLikelyBadWebResult(title, artist)) return null
+        return fallbackSongMap(id, title, artist, thumb, parseDurationMs(durationText))
+    }
+
+    private fun fetchInnertubeRawSongMaps(query: String, page: Int = 0, limit: Int = 80): List<Map<String, Any?>> {
+        val collected = mutableListOf<Map<String, Any?>>()
+        val apiKey = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX3"
+        val params = YouTube.SearchFilter.FILTER_SONG.value
+        for (variant in webSearchQueries(query, page)) {
+            val body = JSONObject()
+                .put("context", JSONObject()
+                    .put("client", JSONObject()
+                        .put("clientName", "WEB_REMIX")
+                        .put("clientVersion", "1.20240520.01.00")
+                        .put("hl", "pt")
+                        .put("gl", "BR")
+                    )
+                    .put("user", JSONObject().put("lockedSafetyMode", false))
+                    .put("request", JSONObject().put("useSsl", true))
+                )
+                .put("query", variant)
+                .put("params", params)
+                .toString()
+            val raw = runCatching {
+                val requestBody = okhttp3.RequestBody.create(
+                    okhttp3.MediaType.parse("application/json; charset=utf-8"),
+                    body,
+                )
+                val request = Request.Builder()
+                    .url("https://music.youtube.com/youtubei/v1/search?prettyPrint=false&key=$apiKey")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
+                    .header("Origin", "https://music.youtube.com")
+                    .header("Referer", "https://music.youtube.com/search?q=${URLEncoder.encode(variant, StandardCharsets.UTF_8.name())}")
+                    .header("Content-Type", "application/json")
+                    .post(requestBody)
+                    .build()
+                quickHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) "" else response.body?.string().orEmpty()
+                }
+            }.getOrDefault("")
+            if (raw.isBlank()) continue
+            val renderers = mutableListOf<JSONObject>()
+            runCatching { JSONObject(raw).findObjectKeys("musicResponsiveListItemRenderer", renderers) }
+            for (renderer in renderers) {
+                parseMusicResponsiveSong(renderer)?.let { collected += it }
+                if (mergeSongMaps(collected).size >= limit) break
+            }
+            if (mergeSongMaps(collected).size >= limit) break
+        }
+        return mergeSongMaps(collected).take(limit)
+    }
+
+    private fun fetchYoutubeWebSongMaps(query: String, page: Int = 0, limit: Int = 60): List<Map<String, Any?>> {
+        if (query.isBlank()) return emptyList()
+        val direct = fetchInnertubeRawSongMaps(query, page = page, limit = limit)
+        if (direct.size >= (limit / 3).coerceAtLeast(8)) return direct.take(limit)
+        val collected = mutableListOf<Map<String, Any?>>()
+        collected += direct
+        val seen = linkedSetOf<String>()
+        direct.forEach { seen += (it["videoId"] ?: it["id"] ?: "").toString() }
+        for (variant in webSearchQueries(query, page)) {
+            val encoded = URLEncoder.encode(variant, StandardCharsets.UTF_8.name())
+            val urls = listOf(
+                "https://www.youtube.com/results?search_query=$encoded",
+                "https://music.youtube.com/search?q=$encoded",
+            )
+            for (url in urls) {
+                val body = runCatching {
+                    val request = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
+                        .header("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
+                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                        .get()
+                        .build()
+                    quickHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) "" else response.body?.string().orEmpty()
+                    }
+                }.getOrDefault("")
+                if (body.isBlank()) continue
+                val matches = Regex("\\\"videoId\\\":\\\"([A-Za-z0-9_-]{11})\\\"").findAll(body)
+                for (match in matches) {
+                    val id = match.groupValues[1]
+                    if (!seen.add(id)) continue
+                    val start = (match.range.first - 2500).coerceAtLeast(0)
+                    val end = (match.range.first + 9000).coerceAtMost(body.length)
+                    val block = body.substring(start, end)
+                    val title = decodeWebText(
+                        Regex("\\\"title\\\"\\s*:\\s*\\{\\s*\\\"runs\\\"\\s*:\\s*\\[\\s*\\{\\s*\\\"text\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                            .find(block)?.groupValues?.getOrNull(1)
+                            ?: Regex("\\\"title\\\"\\s*:\\s*\\{\\s*\\\"simpleText\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                                .find(block)?.groupValues?.getOrNull(1)
+                    )
+                    val artist = decodeWebText(
+                        Regex("\\\"longBylineText\\\".*?\\\"text\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                            .find(block)?.groupValues?.getOrNull(1)
+                            ?: Regex("\\\"shortBylineText\\\".*?\\\"text\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                                .find(block)?.groupValues?.getOrNull(1)
+                            ?: Regex("\\\"ownerText\\\".*?\\\"text\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                                .find(block)?.groupValues?.getOrNull(1)
+                    )
+                    val thumb = decodeWebText(
+                        Regex("\\\"url\\\"\\s*:\\s*\\\"([^\\\"]*i\\.ytimg\\.com[^\\\"]+)\\\"")
+                            .find(block)?.groupValues?.getOrNull(1)
+                    )
+                    val duration = parseDurationMs(
+                        Regex("\\\"lengthText\\\".*?\\\"simpleText\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                            .find(block)?.groupValues?.getOrNull(1)
+                    )
+                    if (title.isBlank()) continue
+                    if (isLikelyBadWebResult(title, artist)) continue
+                    collected += fallbackSongMap(id, title, artist, thumb, duration)
+                    if (collected.size >= limit) break
+                }
+                if (collected.size >= limit) break
+            }
+            if (collected.size >= limit) break
+        }
+        return mergeSongMaps(collected).take(limit)
     }
 
     private suspend fun searchSongItems(query: String, limit: Int = 200): List<SongItem> {
@@ -267,13 +546,14 @@ object MetrolistOnlineBridge {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return@runBlocking home(context)
 
-        val songItems = searchSongItems(trimmed)
+        val nativeSongMaps = searchSongItems(trimmed).take(200).map { songMap(it) }
+        val fallbackSongMaps = if (nativeSongMaps.size < 40) fetchYoutubeWebSongMaps(trimmed, page = 0, limit = 80) else emptyList()
         val albumItems = searchAlbumItems(trimmed)
         val artistItems = searchArtistItems(trimmed)
         val playlistItems = searchPlaylistItems(trimmed)
 
         mapOf(
-            "songs" to songItems.take(200).map { songMap(it) },
+            "songs" to mergeSongMaps(nativeSongMaps + fallbackSongMaps).take(220),
             "albums" to albumItems.take(100).map { albumMap(it) },
             "artists" to artistItems.take(100).map { artistMap(it) },
             "playlists" to playlistItems.take(100).map { playlistMap(it) },
@@ -282,7 +562,10 @@ object MetrolistOnlineBridge {
 
     fun searchSongs(context: Context, query: String): List<Map<String, Any?>> = runBlocking(Dispatchers.IO) {
         ensureInitialized(context)
-        searchSongItems(query.trim()).map { songMap(it) }
+        val trimmed = query.trim()
+        val native = searchSongItems(trimmed).map { songMap(it) }
+        val fallback = if (native.size < 60) fetchYoutubeWebSongMaps(trimmed, page = 0, limit = 100) else emptyList()
+        mergeSongMaps(native + fallback).take(220)
     }
 
     fun searchSongsPage(context: Context, query: String, continuation: String): Map<String, Any?> = runBlocking(Dispatchers.IO) {
@@ -290,11 +573,10 @@ object MetrolistOnlineBridge {
         val token = continuation.trim()
         val trimmed = query.trim()
 
-        fun pageMap(items: List<SongItem>, next: String?): Map<String, Any?> {
-            val audio = items.filterNot { it.isVideoSong }.dedupeItems()
-            val videos = items.filter { it.isVideoSong }.dedupeItems().filterNot { video -> audio.any { it.id == video.id } }
+        fun resultMap(nativeItems: List<SongItem>, fallbackMaps: List<Map<String, Any?>>, next: String?): Map<String, Any?> {
+            val nativeMaps = nativeItems.dedupeItems().map { songMap(it) }
             return mapOf(
-                "items" to (audio + videos).take(60).map { songMap(it) },
+                "items" to mergeSongMaps(nativeMaps + fallbackMaps).take(80),
                 "continuation" to (next ?: ""),
             )
         }
@@ -303,84 +585,87 @@ object MetrolistOnlineBridge {
         if (synthetic != null) {
             val (syntheticQuery, pageIndex) = synthetic
             val queries = expandedSongQueries(syntheticQuery)
-            val startIndex = ((pageIndex - 1) * 3).coerceAtLeast(0)
-            val selectedQueries = queries.drop(startIndex).take(3)
+            val startIndex = ((pageIndex - 1) * 2).coerceAtLeast(0)
+            val selectedQueries = queries.drop(startIndex).take(2).ifEmpty { queryVariants(syntheticQuery).take(1) }
             val collected = mutableListOf<SongItem>()
             for (variant in selectedQueries) {
-                runCatching {
-                    YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow().items.filterIsInstance<SongItem>()
-                }.getOrDefault(emptyList()).let { collected += it }
-                runCatching {
-                    YouTube.searchSummary(variant).getOrThrow().summaries.flatMap { it.items }.filterIsInstance<SongItem>()
-                }.getOrDefault(emptyList()).let { collected += it }
-                if (collected.dedupeItems().size >= 60) break
+                runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow().items.filterIsInstance<SongItem>() }
+                    .getOrDefault(emptyList()).let { collected += it }
+                runCatching { YouTube.searchSummary(variant).getOrThrow().summaries.flatMap { it.items }.filterIsInstance<SongItem>() }
+                    .getOrDefault(emptyList()).let { collected += it }
             }
-            if (collected.dedupeItems().size < 20) {
+            if (collected.dedupeItems().size < 25) {
                 for (variant in selectedQueries) {
-                    runCatching {
-                        YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO).getOrThrow().items.filterIsInstance<SongItem>()
-                    }.getOrDefault(emptyList()).let { collected += it }
-                    if (collected.dedupeItems().size >= 60) break
+                    runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO).getOrThrow().items.filterIsInstance<SongItem>() }
+                        .getOrDefault(emptyList()).let { collected += it }
                 }
             }
-            val hasMoreSynthetic = startIndex + 3 < queries.size
-            return@runBlocking pageMap(
+            val fallback = fetchYoutubeWebSongMaps(syntheticQuery, page = pageIndex, limit = 80)
+            val hasMoreSynthetic = pageIndex < 12 && (startIndex + 2 < queries.size || fallback.isNotEmpty())
+            return@runBlocking resultMap(
                 collected.dedupeItems(),
+                fallback,
                 if (hasMoreSynthetic) syntheticContinuation(syntheticQuery, pageIndex + 1) else null,
             )
         }
 
+        if (trimmed.isBlank()) return@runBlocking resultMap(emptyList(), emptyList(), null)
+
+        // Most important path for the UI: return something immediately after the user presses
+        // the keyboard search button. The Innertube filtered music search can return empty or
+        // stall on some devices/accounts, so use the public YouTube result page first as a
+        // safety net. Playback still uses the Metrolist/YTPlayerUtils pipeline by videoId.
+        val immediateFallback = fetchYoutubeWebSongMaps(trimmed, page = 0, limit = 80)
+        if (immediateFallback.isNotEmpty()) {
+            return@runBlocking resultMap(emptyList(), immediateFallback, syntheticContinuation(trimmed, 1))
+        }
+
+        val collected = mutableListOf<SongItem>()
+        var continuationOut: String? = null
+
         if (token.isNotBlank()) {
             val page = runCatching { YouTube.searchContinuation(token).getOrThrow() }.getOrNull()
-            val items = page?.items?.filterIsInstance<SongItem>().orEmpty()
-            val next = page?.continuation ?: if (trimmed.isNotBlank()) syntheticContinuation(trimmed, 1) else null
-            if (items.isNotEmpty()) return@runBlocking pageMap(items, next)
-            if (trimmed.isNotBlank()) return@runBlocking pageMap(emptyList(), syntheticContinuation(trimmed, 1))
-            return@runBlocking pageMap(emptyList(), null)
+            if (page != null) {
+                collected += page.items.filterIsInstance<SongItem>()
+                continuationOut = page.continuation
+            }
+            val fallback = if (collected.dedupeItems().size < 50) fetchYoutubeWebSongMaps(trimmed, page = 1, limit = 80) else emptyList()
+            val next = continuationOut?.takeIf { it.isNotBlank() } ?: syntheticContinuation(trimmed, 2)
+            return@runBlocking resultMap(collected.dedupeItems(), fallback, next)
         }
 
-        if (trimmed.isBlank()) {
-            return@runBlocking pageMap(emptyList(), null)
-        }
-
-        var continuationOut: String? = null
-        val collected = mutableListOf<SongItem>()
         for (variant in queryVariants(trimmed)) {
             val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow() }.getOrNull()
             if (page != null) {
                 if (continuationOut.isNullOrBlank()) continuationOut = page.continuation
                 collected += page.items.filterIsInstance<SongItem>()
             }
-            runCatching {
-                YouTube.searchSummary(variant).getOrThrow().summaries.flatMap { it.items }.filterIsInstance<SongItem>()
-            }.getOrDefault(emptyList()).let { collected += it }
-            if (collected.filterNot { it.isVideoSong }.dedupeItems().size >= 40) break
+            runCatching { YouTube.searchSummary(variant).getOrThrow().summaries.flatMap { it.items }.filterIsInstance<SongItem>() }
+                .getOrDefault(emptyList()).let { collected += it }
+            if (collected.filterNot { it.isVideoSong }.dedupeItems().size >= 50) break
         }
-
-        if (collected.filterNot { it.isVideoSong }.dedupeItems().size < 24) {
+        if (collected.filterNot { it.isVideoSong }.dedupeItems().size < 30) {
             for (variant in expandedSongQueries(trimmed).drop(queryVariants(trimmed).size)) {
                 val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow() }.getOrNull()
                 if (page != null) {
                     if (continuationOut.isNullOrBlank()) continuationOut = page.continuation
                     collected += page.items.filterIsInstance<SongItem>()
                 }
-                if (collected.filterNot { it.isVideoSong }.dedupeItems().size >= 60) break
+                if (collected.filterNot { it.isVideoSong }.dedupeItems().size >= 70) break
             }
         }
-
-        if (collected.filterNot { it.isVideoSong }.isEmpty() || collected.dedupeItems().size < 12) {
+        if (collected.dedupeItems().size < 20) {
             for (variant in queryVariants(trimmed)) {
                 val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO).getOrThrow() }.getOrNull()
                 if (page != null) {
-                    collected += page.items.filterIsInstance<SongItem>()
                     if (continuationOut.isNullOrBlank()) continuationOut = page.continuation
+                    collected += page.items.filterIsInstance<SongItem>()
                 }
-                if (collected.dedupeItems().size >= 60) break
             }
         }
-
+        val fallback = if (collected.dedupeItems().size < 80) fetchYoutubeWebSongMaps(trimmed, page = 0, limit = 100) else emptyList()
         val next = continuationOut?.takeIf { it.isNotBlank() } ?: syntheticContinuation(trimmed, 1)
-        pageMap(collected.dedupeItems(), next)
+        resultMap(collected.dedupeItems(), fallback, next)
     }
 
     fun searchAlbums(context: Context, query: String): List<Map<String, Any?>> = runBlocking(Dispatchers.IO) {
@@ -427,7 +712,7 @@ object MetrolistOnlineBridge {
                 .header("Accept", "application/json")
                 .get()
                 .build()
-            MetrolistStreamResolver.httpClient.newCall(request).execute().use { response ->
+            quickHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) null else response.body?.string()
             }
         }.getOrNull()
