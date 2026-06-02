@@ -65,6 +65,12 @@
             </intent-filter>
         </receiver>
 
+
+        <service
+            android:name=".MetrolistPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <receiver
             android:name=".MetrolistPlayerActionReceiver"
             android:exported="false" />

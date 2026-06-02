@@ -94,34 +94,53 @@ object MetrolistOnlineBridge {
     }
 
     private suspend fun searchSongItems(query: String, limit: Int = 200): List<SongItem> {
-        val all = mutableListOf<SongItem>()
-        for (variant in queryVariants(query)) {
-            runCatching {
-                YouTube.searchSummary(variant).getOrThrow().summaries
-                    .flatMap { it.items }
-                    .filterIsInstance<SongItem>()
-            }.getOrDefault(emptyList()).let { all += it }
+        val audioSongs = mutableListOf<SongItem>()
+        val videoSongs = mutableListOf<SongItem>()
 
+        fun collect(items: List<SongItem>) {
+            val deduped = items.dedupeItems()
+            audioSongs += deduped.filterNot { it.isVideoSong }
+            videoSongs += deduped.filter { it.isVideoSong }
+        }
+
+        for (variant in queryVariants(query)) {
+            // Prefer true YouTube Music audio tracks first. The previous build
+            // mixed FILTER_VIDEO into the same priority, so artist/search pages
+            // looked like they only had MVs. Keep MVs only as a fallback.
             runCatching {
                 YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG)
                     .getOrThrow()
                     .items
                     .filterIsInstance<SongItem>()
-            }.getOrDefault(emptyList()).let { all += it }
+            }.getOrDefault(emptyList()).let(::collect)
 
-            // YouTube Music often returns official MVs as video songs. The old
-            // Metrolist does NOT hide video songs by default, so keep them here;
-            // otherwise popular artists/searches look empty.
             runCatching {
-                YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO)
-                    .getOrThrow()
-                    .items
+                YouTube.searchSummary(variant).getOrThrow().summaries
+                    .flatMap { it.items }
                     .filterIsInstance<SongItem>()
-            }.getOrDefault(emptyList()).let { all += it }
+            }.getOrDefault(emptyList()).let(::collect)
 
-            if (all.size >= limit) break
+            if (audioSongs.dedupeItems().size >= limit) break
         }
-        return all.dedupeItems().take(limit)
+
+        // Only ask the explicit video filter when audio results are too few.
+        // This preserves the Metrolist behavior of not being empty, without
+        // making MVs dominate normal music search/artist pages.
+        if (audioSongs.dedupeItems().size < 12) {
+            for (variant in queryVariants(query)) {
+                runCatching {
+                    YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO)
+                        .getOrThrow()
+                        .items
+                        .filterIsInstance<SongItem>()
+                }.getOrDefault(emptyList()).let(::collect)
+                if ((audioSongs + videoSongs).dedupeItems().size >= limit) break
+            }
+        }
+
+        val audio = audioSongs.dedupeItems()
+        val videos = videoSongs.dedupeItems().filterNot { video -> audio.any { it.id == video.id } }
+        return (audio + videos).take(limit)
     }
 
     private suspend fun searchAlbumItems(query: String, limit: Int = 120): List<AlbumItem> {
@@ -214,6 +233,70 @@ object MetrolistOnlineBridge {
     fun searchSongs(context: Context, query: String): List<Map<String, Any?>> = runBlocking(Dispatchers.IO) {
         ensureInitialized(context)
         searchSongItems(query.trim()).map { songMap(it) }
+    }
+
+    fun searchSongsPage(context: Context, query: String, continuation: String): Map<String, Any?> = runBlocking(Dispatchers.IO) {
+        ensureInitialized(context)
+        val token = continuation.trim()
+        if (token.isNotBlank()) {
+            val page = runCatching { YouTube.searchContinuation(token).getOrThrow() }.getOrNull()
+            val items = page?.items?.filterIsInstance<SongItem>().orEmpty()
+            val audio = items.filterNot { it.isVideoSong }.dedupeItems()
+            val videos = items.filter { it.isVideoSong }.dedupeItems().filterNot { video -> audio.any { it.id == video.id } }
+            return@runBlocking mapOf(
+                "items" to (audio + videos).map { songMap(it) },
+                "continuation" to (page?.continuation ?: ""),
+            )
+        }
+
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
+            return@runBlocking mapOf("items" to emptyList<Map<String, Any?>>(), "continuation" to "")
+        }
+
+        var continuationOut = ""
+        val collected = mutableListOf<SongItem>()
+        for (variant in queryVariants(trimmed)) {
+            val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow() }.getOrNull()
+            if (page != null) {
+                val songs = page.items.filterIsInstance<SongItem>()
+                if (continuationOut.isBlank()) continuationOut = page.continuation ?: ""
+                if (songs.isNotEmpty()) {
+                    collected += songs
+                    continuationOut = page.continuation ?: continuationOut
+                    break
+                }
+            }
+        }
+
+        if (collected.isEmpty()) {
+            for (variant in queryVariants(trimmed)) {
+                runCatching {
+                    YouTube.searchSummary(variant).getOrThrow().summaries
+                        .flatMap { it.items }
+                        .filterIsInstance<SongItem>()
+                }.getOrDefault(emptyList()).let { collected += it }
+                if (collected.isNotEmpty()) break
+            }
+        }
+
+        if (collected.filterNot { it.isVideoSong }.isEmpty()) {
+            for (variant in queryVariants(trimmed)) {
+                val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO).getOrThrow() }.getOrNull()
+                if (page != null) {
+                    collected += page.items.filterIsInstance<SongItem>()
+                    if (continuationOut.isBlank()) continuationOut = page.continuation ?: ""
+                    if (collected.isNotEmpty()) break
+                }
+            }
+        }
+
+        val audio = collected.filterNot { it.isVideoSong }.dedupeItems()
+        val videos = collected.filter { it.isVideoSong }.dedupeItems().filterNot { video -> audio.any { it.id == video.id } }
+        mapOf(
+            "items" to (audio + videos).take(40).map { songMap(it) },
+            "continuation" to continuationOut,
+        )
     }
 
     fun searchAlbums(context: Context, query: String): List<Map<String, Any?>> = runBlocking(Dispatchers.IO) {
@@ -321,9 +404,33 @@ object MetrolistOnlineBridge {
     fun album(context: Context, browseId: String): Map<String, Any?> = runBlocking(Dispatchers.IO) {
         ensureInitialized(context)
         val page = YouTube.album(browseId.trim()).getOrThrow()
+        val albumArtist = page.album.artists?.joinToString(" ") { it.name }.orEmpty()
+        val directSongs = page.songs.dedupeItems()
+        val albumSongs = if (directSongs.isNotEmpty()) {
+            directSongs
+        } else {
+            runCatching {
+                YouTube.albumSongs(page.album.playlistId.removePrefix("VL"), page.album).getOrThrow()
+            }.getOrDefault(emptyList()).dedupeItems()
+        }
+        val playlistSongs = if (albumSongs.isNotEmpty()) {
+            albumSongs
+        } else {
+            runCatching {
+                YouTube.playlist(page.album.playlistId.removePrefix("VL")).getOrThrow().songs
+            }.getOrDefault(emptyList()).dedupeItems()
+        }
+        val fallbackSongs = if (playlistSongs.isNotEmpty()) {
+            playlistSongs
+        } else {
+            // Last-resort fallback for YouTube Music album pages that expose the
+            // header but no shelf in the regional response. Keep audio tracks
+            // first and bias the query with artist + album title.
+            searchSongItems(listOf(albumArtist, page.album.title).filter { it.isNotBlank() }.joinToString(" "), limit = 80)
+        }
         mapOf(
             "album" to albumMap(page.album),
-            "tracks" to page.songs.dedupeItems().map { songMap(it) },
+            "tracks" to fallbackSongs.dedupeItems().map { songMap(it) },
         )
     }
 
@@ -331,7 +438,8 @@ object MetrolistOnlineBridge {
         ensureInitialized(context)
         val page = YouTube.artist(browseId.trim()).getOrThrow()
         val allItems = page.sections.flatMap { it.items }
-        var topSongs = allItems.filterIsInstance<SongItem>().dedupeItems().take(80)
+        val sectionSongs = allItems.filterIsInstance<SongItem>().dedupeItems()
+        var topSongs = (sectionSongs.filterNot { it.isVideoSong } + sectionSongs.filter { it.isVideoSong }).dedupeItems().take(80)
         val albums = allItems.filterIsInstance<AlbumItem>().dedupeItems().take(80)
         val playlists = allItems.filterIsInstance<PlaylistItem>().dedupeItems().take(60)
         val songSection = page.sections.firstOrNull { section -> section.items.any { it is SongItem } }
@@ -359,7 +467,7 @@ object MetrolistOnlineBridge {
     fun artistSongs(context: Context, artistName: String, artistBrowseId: String, moreBrowseId: String?, moreParams: String?): List<Map<String, Any?>> = runBlocking(Dispatchers.IO) {
         ensureInitialized(context)
         val endpointId = moreBrowseId?.trim().orEmpty()
-        val endpointSongs = if (endpointId.isNotEmpty()) {
+        val endpointSongsRaw = if (endpointId.isNotEmpty()) {
             runCatching {
                 YouTube.artistItems(BrowseEndpoint(endpointId, moreParams?.takeIf { it.isNotBlank() }))
                     .getOrThrow()
@@ -369,6 +477,7 @@ object MetrolistOnlineBridge {
         } else {
             emptyList()
         }
+        val endpointSongs = (endpointSongsRaw.filterNot { it.isVideoSong } + endpointSongsRaw.filter { it.isVideoSong }).dedupeItems()
         val fallbackSongs = if (endpointSongs.isEmpty()) searchSongItems(artistName.trim(), limit = 200) else emptyList()
         (endpointSongs + fallbackSongs).dedupeItems().take(200).map { songMap(it) }
     }

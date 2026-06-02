@@ -1,7 +1,9 @@
 package com.hirumisu.musicapp
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
+import android.app.Service
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -75,6 +77,8 @@ object MetrolistNativePlayer {
     const val ACTION_SHUFFLE = "com.hirumisu.musicapp.action.SHUFFLE"
     const val ACTION_REPEAT = "com.hirumisu.musicapp.action.REPEAT"
     const val ACTION_STOP = "com.hirumisu.musicapp.action.STOP"
+    const val ACTION_SERVICE_START = "com.hirumisu.musicapp.action.SERVICE_START"
+    const val ACTION_SERVICE_STOP_FOREGROUND = "com.hirumisu.musicapp.action.SERVICE_STOP_FOREGROUND"
 
     @Volatile private var appContext: Context? = null
     @Volatile private var player: ExoPlayer? = null
@@ -83,10 +87,13 @@ object MetrolistNativePlayer {
     @Volatile private var currentArtworkBitmap: Bitmap? = null
     @Volatile private var currentArtworkKey: String? = null
     @Volatile private var mediaSession: MediaSessionCompat? = null
+    @Volatile private var lastNotification: Notification? = null
+    @Volatile private var foregroundServiceActive = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val artExecutor = Executors.newSingleThreadExecutor()
     private val songUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+    private val playbackErrorRetries = ConcurrentHashMap<String, Int>()
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -168,28 +175,64 @@ object MetrolistNativePlayer {
         p.play()
     }
 
+    private fun playMediaIndex(p: ExoPlayer, index: Int, positionMs: Long = 0L) {
+        if (index < 0 || index >= p.mediaItemCount) return
+        p.seekTo(index, positionMs.coerceAtLeast(0L))
+        if (p.playbackState == Player.STATE_IDLE || p.playbackState == Player.STATE_ENDED) {
+            runCatching { p.prepare() }
+        }
+        p.playWhenReady = true
+        p.play()
+    }
+
     private fun recoverEndedPlayback(p: ExoPlayer, context: Context) {
-        if (p.mediaItemCount <= 0) return
-        mainHandler.post {
-            val current = player ?: return@post
-            if (current !== p || current.playbackState != Player.STATE_ENDED) return@post
-            when {
-                current.repeatMode == Player.REPEAT_MODE_ONE -> {
-                    val index = current.currentMediaItemIndex.coerceAtLeast(0)
-                    current.seekTo(index, 0L)
-                    resumePrepared(current)
+        val runRecovery = {
+            val current = player
+            if (current == null || current !== p || current.mediaItemCount <= 0 || current.playbackState != Player.STATE_ENDED) {
+                updateNotification(context.applicationContext)
+            } else {
+                when (current.repeatMode) {
+                    Player.REPEAT_MODE_ONE -> {
+                        val index = current.currentMediaItemIndex.coerceIn(0, current.mediaItemCount - 1)
+                        playMediaIndex(current, index, 0L)
+                    }
+                    Player.REPEAT_MODE_ALL -> {
+                        val next = current.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET } ?: 0
+                        playMediaIndex(current, next, 0L)
+                    }
+                    else -> {
+                        // Em alguns aparelhos o ExoPlayer chega em ENDED sem fazer a transição automática.
+                        // Se ainda existir próximo item na fila nativa, avance mesmo com o app em segundo plano.
+                        val next = current.nextMediaItemIndex
+                        if (next != C.INDEX_UNSET) playMediaIndex(current, next, 0L)
+                    }
                 }
-                current.nextMediaItemIndex != C.INDEX_UNSET -> {
-                    current.seekToDefaultPosition(current.nextMediaItemIndex)
-                    resumePrepared(current)
-                }
-                current.repeatMode == Player.REPEAT_MODE_ALL && current.mediaItemCount > 0 -> {
-                    current.seekToDefaultPosition(0)
-                    resumePrepared(current)
+                updateNotification(context.applicationContext)
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) runRecovery() else mainHandler.post { runRecovery() }
+    }
+
+    private fun recoverPlaybackError(p: ExoPlayer, context: Context, mediaId: String) {
+        val key = mediaId.ifBlank { p.currentMediaItem?.mediaId.orEmpty() }.ifBlank { "item:${p.currentMediaItemIndex}" }
+        val attempt = playbackErrorRetries.merge(key, 1) { old, _ -> old + 1 } ?: 1
+        mainHandler.postDelayed({
+            val current = player ?: return@postDelayed
+            if (current !== p || current.mediaItemCount <= 0) return@postDelayed
+            if (attempt <= 1) {
+                // Primeira falha: invalida cache, reabre o mesmo item e deixa o ExoPlayer resolver de novo.
+                if (key.isNotBlank()) songUrlCache.remove(key)
+                val index = current.currentMediaItemIndex.coerceIn(0, current.mediaItemCount - 1)
+                playMediaIndex(current, index, current.currentPosition.coerceAtLeast(0L))
+            } else {
+                when {
+                    current.repeatMode == Player.REPEAT_MODE_ONE -> playMediaIndex(current, current.currentMediaItemIndex.coerceIn(0, current.mediaItemCount - 1), 0L)
+                    current.nextMediaItemIndex != C.INDEX_UNSET -> playMediaIndex(current, current.nextMediaItemIndex, 0L)
+                    current.repeatMode == Player.REPEAT_MODE_ALL && current.mediaItemCount > 0 -> playMediaIndex(current, 0, 0L)
                 }
             }
             updateNotification(context.applicationContext)
-        }
+        }, 650L)
     }
 
     private fun ensurePlayer(context: Context): ExoPlayer {
@@ -220,6 +263,7 @@ object MetrolistNativePlayer {
                 if (streamKey.isNotBlank()) songUrlCache.remove(streamKey)
                 if (mediaId.isNotBlank()) songUrlCache.remove(mediaId)
                 Timber.tag(TAG).e(error, "Erro no player nativo do Metrolist para %s", mediaId)
+                recoverPlaybackError(created, context.applicationContext, mediaId.ifBlank { streamKey })
                 updateNotification(context.applicationContext)
             }
 
@@ -232,7 +276,11 @@ object MetrolistNativePlayer {
                     created.currentPosition,
                     created.currentMediaItem?.mediaId,
                 )
-                if (playbackState == Player.STATE_READY) lastError = null
+                if (playbackState == Player.STATE_READY) {
+                    lastError = null
+                    created.currentMediaItem?.mediaId?.let { playbackErrorRetries.remove(it) }
+                    created.currentMediaItem?.localConfiguration?.customCacheKey?.let { playbackErrorRetries.remove(it) }
+                }
                 attachEqualizerToPlayerSession(created)
                 if (playbackState == Player.STATE_ENDED) {
                     recoverEndedPlayback(created, context.applicationContext)
@@ -248,6 +296,9 @@ object MetrolistNativePlayer {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentArtworkBitmap = null
                 currentArtworkKey = null
+                lastError = null
+                mediaItem?.mediaId?.let { playbackErrorRetries.remove(it) }
+                mediaItem?.localConfiguration?.customCacheKey?.let { playbackErrorRetries.remove(it) }
                 attachEqualizerToPlayerSession(created)
                 updateNotification(context.applicationContext)
             }
@@ -455,7 +506,10 @@ object MetrolistNativePlayer {
         player?.clearMediaItems()
         currentArtworkBitmap = null
         currentArtworkKey = null
-        appContext?.let { NotificationManagerCompat.from(it).cancel(NOTIFICATION_ID) }
+        appContext?.let {
+            requestStopForegroundService(it)
+            NotificationManagerCompat.from(it).cancel(NOTIFICATION_ID)
+        }
         state()
     }
 
@@ -465,6 +519,8 @@ object MetrolistNativePlayer {
         mediaSession?.release()
         mediaSession = null
         songUrlCache.clear()
+        playbackErrorRetries.clear()
+        appContext?.let { requestStopForegroundService(it) }
         state()
     }
 
@@ -580,6 +636,35 @@ object MetrolistNativePlayer {
         )
     }
 
+    internal fun promoteToForeground(service: Service) {
+        ensureInitialized(service.applicationContext)
+        val notification = buildNotification(service.applicationContext) ?: lastNotification ?: return
+        lastNotification = notification
+        runCatching {
+            service.startForeground(NOTIFICATION_ID, notification)
+            foregroundServiceActive = true
+        }.onFailure { Timber.tag(TAG).w(it, "Falha ao iniciar foreground service do player") }
+    }
+
+    internal fun stopForegroundService(service: Service) {
+        runCatching {
+            @Suppress("DEPRECATION")
+            service.stopForeground(false)
+            foregroundServiceActive = false
+        }
+    }
+
+    private fun requestForegroundService(context: Context) {
+        val intent = Intent(context, MetrolistPlaybackService::class.java).setAction(ACTION_SERVICE_START)
+        runCatching { ContextCompat.startForegroundService(context, intent) }
+            .onFailure { Timber.tag(TAG).w(it, "Falha ao solicitar foreground service") }
+    }
+
+    private fun requestStopForegroundService(context: Context) {
+        val intent = Intent(context, MetrolistPlaybackService::class.java).setAction(ACTION_SERVICE_STOP_FOREGROUND)
+        runCatching { context.startService(intent) }
+    }
+
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = context.getSystemService(NotificationManager::class.java)
@@ -641,9 +726,9 @@ object MetrolistNativePlayer {
         }
     }
 
-    private fun updateNotification(context: Context) {
-        val p = player ?: return
-        val item = p.currentMediaItem ?: return
+    private fun buildNotification(context: Context): Notification? {
+        val p = player ?: return null
+        val item = p.currentMediaItem ?: return null
         val meta = item.mediaMetadata
         val title = meta.title?.toString()?.takeIf { it.isNotBlank() } ?: "Music"
         val artist = meta.artist?.toString()?.takeIf { it.isNotBlank() }
@@ -654,7 +739,7 @@ object MetrolistNativePlayer {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            return
+            return null
         }
 
         val playing = p.isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING)
@@ -701,7 +786,7 @@ object MetrolistNativePlayer {
         }
         val shuffleTitle = if (p.shuffleModeEnabled) "Aleatório ligado" else "Aleatório desligado"
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
             .setContentText(artist)
@@ -724,6 +809,19 @@ object MetrolistNativePlayer {
                     .setShowActionsInCompactView(0, 1, 2),
             )
             .build()
+    }
+
+    private fun updateNotification(context: Context) {
+        val p = player ?: return
+        val notification = buildNotification(context) ?: return
+        lastNotification = notification
+        val playing = p.isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING)
+        if (playing) {
+            requestForegroundService(context.applicationContext)
+        } else if (foregroundServiceActive) {
+            requestStopForegroundService(context.applicationContext)
+        }
         runCatching { NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification) }
     }
+
 }

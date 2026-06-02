@@ -179,6 +179,13 @@ class MainActivity : AudioServiceActivity() {
                             MetrolistOnlineBridge.searchSongs(applicationContext, query)
                         }
                     }
+                    "searchSongsPage" -> {
+                        val query = call.argument<String>("query") ?: ""
+                        val continuation = call.argument<String>("continuation") ?: ""
+                        runAsync(result, "METROLIST_SEARCH_SONGS_PAGE_ERROR") {
+                            MetrolistOnlineBridge.searchSongsPage(applicationContext, query, continuation)
+                        }
+                    }
                     "searchAlbums" -> {
                         val query = call.argument<String>("query") ?: ""
                         runAsync(result, "METROLIST_SEARCH_ALBUMS_ERROR") {

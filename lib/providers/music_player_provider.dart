@@ -24,6 +24,16 @@ enum RepeatMode { off, track, album }
 enum AppLanguage { portuguese, english, japanese }
 enum EqualizerPreset { balanced, bassBoost, soft, dynamic, crisp, trebleBoost, custom }
 
+class _NativeSongsPage {
+  const _NativeSongsPage({
+    required this.songs,
+    required this.continuation,
+  });
+
+  final List<AudioTrack> songs;
+  final String? continuation;
+}
+
 class EqualizerBandSetting {
   const EqualizerBandSetting({
     required this.index,
@@ -132,6 +142,9 @@ class MusicPlayerProvider extends ChangeNotifier {
   List<OnlineArtist> _onlineRecommendedArtists = <OnlineArtist>[];
   List<OnlinePlaylist> _onlineRecommendedPlaylists = <OnlinePlaylist>[];
   bool _isOnlineLoading = false;
+  bool _isLoadingMoreOnlineSongs = false;
+  String? _onlineSongsContinuation;
+  String _onlineSongsContinuationQuery = '';
   String? _onlineError;
   String _lastOnlineQuery = '';
 
@@ -534,6 +547,17 @@ class MusicPlayerProvider extends ChangeNotifier {
         await _invokeMetrolistList('searchSongs', <String, dynamic>{'query': query}),
       );
 
+  Future<_NativeSongsPage> _searchSongsPageNative(String query, {String? continuation}) async {
+    final payload = await _invokeMetrolistMap('searchSongsPage', <String, dynamic>{
+      'query': query,
+      if ((continuation ?? '').trim().isNotEmpty) 'continuation': continuation!.trim(),
+    });
+    return _NativeSongsPage(
+      songs: _tracksFromNative(payload['items']),
+      continuation: _emptyToNull('${payload['continuation'] ?? ''}'),
+    );
+  }
+
   Future<List<OnlineAlbum>> _searchAlbumsNative(String query) async => _albumsFromNative(
         await _invokeMetrolistList('searchAlbums', <String, dynamic>{'query': query}),
       );
@@ -771,6 +795,8 @@ class MusicPlayerProvider extends ChangeNotifier {
             : _onlinePlaylists,
       );
   bool get isOnlineLoading => _isOnlineLoading;
+  bool get isLoadingMoreOnlineSongs => _isLoadingMoreOnlineSongs;
+  bool get hasMoreOnlineSongs => _lastOnlineQuery.trim().isNotEmpty && (_onlineSongsContinuation ?? '').trim().isNotEmpty;
   String? get onlineError => _onlineError;
   List<String> get onlineSearchHistory => List.unmodifiable(_onlineSearchHistory);
   List<AudioTrack> get onlineRecentTracks => List.unmodifiable(_onlineRecentTracks);
@@ -2294,9 +2320,101 @@ class MusicPlayerProvider extends ChangeNotifier {
     final previousPlaylists = List<OnlinePlaylist>.from(_onlinePlaylists);
     _isOnlineLoading = true;
     _onlineError = null;
+    if (rawQuery.isEmpty) {
+      _onlineSongsContinuation = null;
+      _onlineSongsContinuationQuery = '';
+      _isLoadingMoreOnlineSongs = false;
+    }
     notifyListeners();
+
+    // Pesquisa digitada precisa responder assim que o usuário aperta “ir” no
+    // teclado. A versão anterior chamava a busca geral e depois repetia todas
+    // as buscas filtradas em sequência, deixando a tela parada por vários
+    // segundos. Para consulta não vazia, carregamos as músicas primeiro e
+    // atualizamos a UI imediatamente; álbuns/artistas/playlists chegam em
+    // paralelo logo depois.
+    if (rawQuery.isNotEmpty) {
+      try {
+        _lastOnlineQuery = rawQuery;
+        unawaited(rememberOnlineSearch(rawQuery));
+
+        _onlineSongsContinuation = null;
+        _onlineSongsContinuationQuery = rawQuery;
+        _isLoadingMoreOnlineSongs = false;
+
+        final Future<_NativeSongsPage> songsFuture = _searchSongsPageNative(rawQuery)
+            .timeout(const Duration(seconds: 7))
+            .catchError((_) => const _NativeSongsPage(songs: <AudioTrack>[], continuation: null));
+        final Future<OnlineSearchResult> summaryFuture = _searchNative(rawQuery)
+            .timeout(const Duration(seconds: 7))
+            .catchError((_) => const OnlineSearchResult(songs: <AudioTrack>[], albums: <OnlineAlbum>[], artists: <OnlineArtist>[], playlists: <OnlinePlaylist>[]));
+        final Future<List<OnlineAlbum>> albumsFuture = _searchAlbumsNative(rawQuery)
+            .timeout(const Duration(seconds: 7))
+            .catchError((_) => const <OnlineAlbum>[]);
+        final Future<List<OnlineArtist>> artistsFuture = _searchArtistsNative(rawQuery)
+            .timeout(const Duration(seconds: 7))
+            .catchError((_) => const <OnlineArtist>[]);
+        final Future<List<OnlinePlaylist>> playlistsFuture = _searchPlaylistsNative(rawQuery)
+            .timeout(const Duration(seconds: 7))
+            .catchError((_) => const <OnlinePlaylist>[]);
+
+        final firstPage = await songsFuture;
+        if (requestId != _onlineSearchRequestSerial) return;
+        final firstSongs = _dedupeTracks(firstPage.songs);
+        _onlineSongsContinuation = firstPage.continuation;
+        if (firstSongs.isNotEmpty) {
+          _onlineSongs = firstSongs;
+          _onlineError = null;
+          notifyListeners();
+          if (firstSongs.length < 12 && hasMoreOnlineSongs) {
+            unawaited(loadMoreOnlineSongs());
+          }
+        }
+
+        final results = await Future.wait<dynamic>([summaryFuture, albumsFuture, artistsFuture, playlistsFuture]);
+        if (requestId != _onlineSearchRequestSerial) return;
+        final summaryResult = results[0] as OnlineSearchResult;
+        final albumsResult = results[1] as List<OnlineAlbum>;
+        final artistsResult = results[2] as List<OnlineArtist>;
+        final playlistsResult = results[3] as List<OnlinePlaylist>;
+        final mergedAlbums = _dedupeAlbums(<OnlineAlbum>[...summaryResult.albums, ...albumsResult]);
+        final mergedArtists = _dedupeRecommendedArtists(<OnlineArtist>[...summaryResult.artists, ...artistsResult]);
+        final mergedPlaylists = _dedupePlaylists(<OnlinePlaylist>[...summaryResult.playlists, ...playlistsResult]);
+
+        _onlineSongs = _dedupeTracks(<AudioTrack>[..._onlineSongs, ...firstSongs, ...summaryResult.songs]);
+        _onlineAlbums = mergedAlbums;
+        _onlineArtists = mergedArtists;
+        _onlinePlaylists = mergedPlaylists;
+        _onlineRecommendedArtists = _rankRecommendedArtists(mergedArtists).take(24).toList(growable: false);
+        _onlineRecommendedPlaylists = _dedupePlaylists(mergedPlaylists).take(40).toList(growable: false);
+        unawaited(_refreshOnlineRecommendations(seedSongs: _onlineSongs));
+
+        for (final item in _onlineSongs.where((item) => item.isRemote).take(6)) {
+          unawaited(_prewarmMetrolistStream(item));
+        }
+        final hasPayload = _onlineSongs.isNotEmpty || _onlineAlbums.isNotEmpty || _onlineArtists.isNotEmpty || _onlinePlaylists.isNotEmpty;
+        _onlineError = hasPayload ? null : 'Nenhum resultado online encontrado.';
+      } catch (e) {
+        if (requestId == _onlineSearchRequestSerial) {
+          _onlineError = 'Falha na busca online: $e';
+          _onlineSongs = previousSongs;
+          _onlineRecommendedSongs = previousRecommended;
+          _onlineRecommendedPlaylists = previousRecommendedPlaylists;
+          _onlineAlbums = previousAlbums;
+          _onlineArtists = previousArtists;
+          _onlinePlaylists = previousPlaylists;
+        }
+      } finally {
+        if (requestId == _onlineSearchRequestSerial) {
+          _isOnlineLoading = false;
+          notifyListeners();
+        }
+      }
+      return;
+    }
+
     try {
-      final result = await (rawQuery.isEmpty ? _homeNative() : _searchNative(rawQuery))
+      final result = await _homeNative()
           .timeout(const Duration(seconds: 14));
       if (requestId != _onlineSearchRequestSerial) {
         return;
@@ -2458,6 +2576,35 @@ class MusicPlayerProvider extends ChangeNotifier {
         _isOnlineLoading = false;
         notifyListeners();
       }
+    }
+  }
+
+  Future<void> loadMoreOnlineSongs() async {
+    final query = _lastOnlineQuery.trim();
+    final continuation = (_onlineSongsContinuation ?? '').trim();
+    if (query.isEmpty || continuation.isEmpty || _isLoadingMoreOnlineSongs) return;
+    if (_onlineSongsContinuationQuery.trim().toLowerCase() != query.toLowerCase()) return;
+
+    _isLoadingMoreOnlineSongs = true;
+    notifyListeners();
+    try {
+      final page = await _searchSongsPageNative(query, continuation: continuation)
+          .timeout(const Duration(seconds: 10));
+      final nextSongs = _dedupeTracks(page.songs);
+      if (nextSongs.isNotEmpty) {
+        _onlineSongs = _dedupeTracks(<AudioTrack>[..._onlineSongs, ...nextSongs]);
+        for (final item in nextSongs.where((item) => item.isRemote).take(4)) {
+          unawaited(_prewarmMetrolistStream(item));
+        }
+      }
+      _onlineSongsContinuation = page.continuation;
+      _onlineError = null;
+    } catch (_) {
+      // Não derruba a busca se a próxima página falhar; o usuário pode rolar
+      // novamente ou tocar nos resultados já carregados.
+    } finally {
+      _isLoadingMoreOnlineSongs = false;
+      notifyListeners();
     }
   }
 
@@ -2929,7 +3076,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   Future<void> toggleShuffle() async {
     _shuffleEnabled = !_shuffleEnabled;
     await _prefs?.setBool(_shuffleKey, _shuffleEnabled);
-    unawaited(_syncNativePlaybackOptions());
+    await _syncNativePlaybackOptions();
     notifyListeners();
   }
 
@@ -2937,7 +3084,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     _repeatMode = RepeatMode.values[(_repeatMode.index + 1) % RepeatMode.values.length];
     await _prefs?.setInt(_repeatModeKey, _repeatMode.index);
     await _applyRepeatModeToPlayer();
-    unawaited(_syncNativePlaybackOptions());
+    await _syncNativePlaybackOptions();
     notifyListeners();
   }
 

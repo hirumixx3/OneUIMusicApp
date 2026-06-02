@@ -1241,8 +1241,15 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
         ),
         const SizedBox(height: 16),
         Expanded(
-          child: CustomScrollView(
-            slivers: [
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (active && showSongs && notification.metrics.pixels >= notification.metrics.maxScrollExtent - 700) {
+                context.read<MusicPlayerProvider>().loadMoreOnlineSongs();
+              }
+              return false;
+            },
+            child: CustomScrollView(
+              slivers: [
               if (!active) ...[
                 if (searchHistory.isNotEmpty) ...[
                   const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Histórico de pesquisa')),
@@ -1306,9 +1313,28 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
                           onFavoriteTap: () => provider.toggleFavorite(track),
                         );
                       },
-                      childCount: (songs.take(20).length * 2 - 1).clamp(0, 99).toInt(),
+                      childCount: (songs.length * 2 - 1).clamp(0, 9999).toInt(),
                     ),
                   ),
+                  if (active && (provider.isLoadingMoreOnlineSongs || provider.hasMoreOnlineSongs))
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: provider.isLoadingMoreOnlineSongs
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                                )
+                              : TextButton.icon(
+                                  onPressed: () => provider.loadMoreOnlineSongs(),
+                                  icon: const Icon(Icons.expand_more_rounded),
+                                  label: const Text('Carregar mais músicas'),
+                                ),
+                        ),
+                      ),
+                    ),
                 ],
                 if (showAlbums && albums.isNotEmpty) ...[
                   const SliverToBoxAdapter(child: SizedBox(height: 22)),
@@ -1394,7 +1420,8 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
                   ),
               ],
               SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -2741,6 +2768,7 @@ class _OnlineInlineSearchBar extends StatelessWidget {
         controller: controller,
         textInputAction: TextInputAction.search,
         onSubmitted: onSubmitted,
+        onEditingComplete: () => onSubmitted(controller.text),
         decoration: InputDecoration(
           border: InputBorder.none,
           prefixIcon: const Icon(Icons.search_rounded),
