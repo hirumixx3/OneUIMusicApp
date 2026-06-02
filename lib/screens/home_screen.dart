@@ -656,7 +656,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   selectedIndex: _onlineShellIndex,
                   onSelected: (index) async {
                     if (index == 0) {
-                      await provider.clearOnlineQuery(reloadHome: false);
+                      await provider.clearOnlineQuery(reloadHome: true);
                       provider.setOnlineSectionIndex(0);
                     }
                     setState(() => _onlineShellIndex = index);

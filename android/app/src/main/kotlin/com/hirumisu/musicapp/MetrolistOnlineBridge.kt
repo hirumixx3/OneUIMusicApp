@@ -20,6 +20,7 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import timber.log.Timber
 
@@ -85,12 +86,55 @@ object MetrolistOnlineBridge {
             .replace(Regex("\\bchassing\\b", RegexOption.IGNORE_CASE), "chasing")
             .replace(Regex("\\bfelling\\b", RegexOption.IGNORE_CASE), "feeling")
             .replace(Regex("\\bfeelling\\b", RegexOption.IGNORE_CASE), "feeling")
-        val variants = linkedSetOf(cleaned, fixed)
-        if (!cleaned.contains("music", ignoreCase = true) && !cleaned.contains("música", ignoreCase = true)) {
-            variants += "$fixed música"
-            variants += "$fixed song"
+        val variants = linkedSetOf<String>()
+        fun add(value: String) {
+            val v = value.trim().replace(Regex("\\s+"), " ")
+            if (v.isNotBlank()) variants += v
         }
-        return variants.filter { it.isNotBlank() }
+        add(cleaned)
+        add(fixed)
+        if (fixed.equals("txt", ignoreCase = true) || fixed.equals("t x t", ignoreCase = true)) {
+            add("TOMORROW X TOGETHER")
+            add("Tomorrow X Together")
+        }
+        if (!fixed.contains("music", ignoreCase = true) && !fixed.contains("música", ignoreCase = true)) {
+            add("$fixed música")
+            add("$fixed song")
+        }
+        return variants.toList()
+    }
+
+    private fun expandedSongQueries(query: String): List<String> {
+        val base = queryVariants(query)
+        val expanded = linkedSetOf<String>()
+        fun add(value: String) {
+            val v = value.trim().replace(Regex("\\s+"), " ")
+            if (v.isNotBlank()) expanded += v
+        }
+        for (variant in base) {
+            add(variant)
+            add("$variant official audio")
+            add("$variant topic")
+            add("$variant audio")
+            add("$variant lyrics")
+            add("$variant album")
+        }
+        return expanded.toList()
+    }
+
+    private const val SYNTHETIC_CONTINUATION_PREFIX = "APP_MORE::"
+
+    private fun syntheticContinuation(query: String, page: Int): String =
+        SYNTHETIC_CONTINUATION_PREFIX + URLEncoder.encode(query, StandardCharsets.UTF_8.name()) + "::" + page
+
+    private fun parseSyntheticContinuation(token: String): Pair<String, Int>? {
+        if (!token.startsWith(SYNTHETIC_CONTINUATION_PREFIX)) return null
+        val raw = token.removePrefix(SYNTHETIC_CONTINUATION_PREFIX)
+        val split = raw.lastIndexOf("::")
+        if (split <= 0) return null
+        val query = runCatching { URLDecoder.decode(raw.substring(0, split), StandardCharsets.UTF_8.name()) }.getOrNull() ?: return null
+        val page = raw.substring(split + 2).toIntOrNull() ?: return null
+        return query to page.coerceAtLeast(1)
     }
 
     private suspend fun searchSongItems(query: String, limit: Int = 200): List<SongItem> {
@@ -104,9 +148,6 @@ object MetrolistOnlineBridge {
         }
 
         for (variant in queryVariants(query)) {
-            // Prefer true YouTube Music audio tracks first. The previous build
-            // mixed FILTER_VIDEO into the same priority, so artist/search pages
-            // looked like they only had MVs. Keep MVs only as a fallback.
             runCatching {
                 YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG)
                     .getOrThrow()
@@ -123,10 +164,19 @@ object MetrolistOnlineBridge {
             if (audioSongs.dedupeItems().size >= limit) break
         }
 
-        // Only ask the explicit video filter when audio results are too few.
-        // This preserves the Metrolist behavior of not being empty, without
-        // making MVs dominate normal music search/artist pages.
-        if (audioSongs.dedupeItems().size < 12) {
+        if (audioSongs.dedupeItems().size < 24) {
+            for (variant in expandedSongQueries(query).drop(queryVariants(query).size)) {
+                runCatching {
+                    YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG)
+                        .getOrThrow()
+                        .items
+                        .filterIsInstance<SongItem>()
+                }.getOrDefault(emptyList()).let(::collect)
+                if (audioSongs.dedupeItems().size >= 48) break
+            }
+        }
+
+        if (audioSongs.dedupeItems().size < 18) {
             for (variant in queryVariants(query)) {
                 runCatching {
                     YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO)
@@ -238,65 +288,99 @@ object MetrolistOnlineBridge {
     fun searchSongsPage(context: Context, query: String, continuation: String): Map<String, Any?> = runBlocking(Dispatchers.IO) {
         ensureInitialized(context)
         val token = continuation.trim()
-        if (token.isNotBlank()) {
-            val page = runCatching { YouTube.searchContinuation(token).getOrThrow() }.getOrNull()
-            val items = page?.items?.filterIsInstance<SongItem>().orEmpty()
+        val trimmed = query.trim()
+
+        fun pageMap(items: List<SongItem>, next: String?): Map<String, Any?> {
             val audio = items.filterNot { it.isVideoSong }.dedupeItems()
             val videos = items.filter { it.isVideoSong }.dedupeItems().filterNot { video -> audio.any { it.id == video.id } }
-            return@runBlocking mapOf(
-                "items" to (audio + videos).map { songMap(it) },
-                "continuation" to (page?.continuation ?: ""),
+            return mapOf(
+                "items" to (audio + videos).take(60).map { songMap(it) },
+                "continuation" to (next ?: ""),
             )
         }
 
-        val trimmed = query.trim()
-        if (trimmed.isBlank()) {
-            return@runBlocking mapOf("items" to emptyList<Map<String, Any?>>(), "continuation" to "")
+        val synthetic = parseSyntheticContinuation(token)
+        if (synthetic != null) {
+            val (syntheticQuery, pageIndex) = synthetic
+            val queries = expandedSongQueries(syntheticQuery)
+            val startIndex = ((pageIndex - 1) * 3).coerceAtLeast(0)
+            val selectedQueries = queries.drop(startIndex).take(3)
+            val collected = mutableListOf<SongItem>()
+            for (variant in selectedQueries) {
+                runCatching {
+                    YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow().items.filterIsInstance<SongItem>()
+                }.getOrDefault(emptyList()).let { collected += it }
+                runCatching {
+                    YouTube.searchSummary(variant).getOrThrow().summaries.flatMap { it.items }.filterIsInstance<SongItem>()
+                }.getOrDefault(emptyList()).let { collected += it }
+                if (collected.dedupeItems().size >= 60) break
+            }
+            if (collected.dedupeItems().size < 20) {
+                for (variant in selectedQueries) {
+                    runCatching {
+                        YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO).getOrThrow().items.filterIsInstance<SongItem>()
+                    }.getOrDefault(emptyList()).let { collected += it }
+                    if (collected.dedupeItems().size >= 60) break
+                }
+            }
+            val hasMoreSynthetic = startIndex + 3 < queries.size
+            return@runBlocking pageMap(
+                collected.dedupeItems(),
+                if (hasMoreSynthetic) syntheticContinuation(syntheticQuery, pageIndex + 1) else null,
+            )
         }
 
-        var continuationOut = ""
+        if (token.isNotBlank()) {
+            val page = runCatching { YouTube.searchContinuation(token).getOrThrow() }.getOrNull()
+            val items = page?.items?.filterIsInstance<SongItem>().orEmpty()
+            val next = page?.continuation ?: if (trimmed.isNotBlank()) syntheticContinuation(trimmed, 1) else null
+            if (items.isNotEmpty()) return@runBlocking pageMap(items, next)
+            if (trimmed.isNotBlank()) return@runBlocking pageMap(emptyList(), syntheticContinuation(trimmed, 1))
+            return@runBlocking pageMap(emptyList(), null)
+        }
+
+        if (trimmed.isBlank()) {
+            return@runBlocking pageMap(emptyList(), null)
+        }
+
+        var continuationOut: String? = null
         val collected = mutableListOf<SongItem>()
         for (variant in queryVariants(trimmed)) {
             val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow() }.getOrNull()
             if (page != null) {
-                val songs = page.items.filterIsInstance<SongItem>()
-                if (continuationOut.isBlank()) continuationOut = page.continuation ?: ""
-                if (songs.isNotEmpty()) {
-                    collected += songs
-                    continuationOut = page.continuation ?: continuationOut
-                    break
+                if (continuationOut.isNullOrBlank()) continuationOut = page.continuation
+                collected += page.items.filterIsInstance<SongItem>()
+            }
+            runCatching {
+                YouTube.searchSummary(variant).getOrThrow().summaries.flatMap { it.items }.filterIsInstance<SongItem>()
+            }.getOrDefault(emptyList()).let { collected += it }
+            if (collected.filterNot { it.isVideoSong }.dedupeItems().size >= 40) break
+        }
+
+        if (collected.filterNot { it.isVideoSong }.dedupeItems().size < 24) {
+            for (variant in expandedSongQueries(trimmed).drop(queryVariants(trimmed).size)) {
+                val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG).getOrThrow() }.getOrNull()
+                if (page != null) {
+                    if (continuationOut.isNullOrBlank()) continuationOut = page.continuation
+                    collected += page.items.filterIsInstance<SongItem>()
                 }
+                if (collected.filterNot { it.isVideoSong }.dedupeItems().size >= 60) break
             }
         }
 
-        if (collected.isEmpty()) {
-            for (variant in queryVariants(trimmed)) {
-                runCatching {
-                    YouTube.searchSummary(variant).getOrThrow().summaries
-                        .flatMap { it.items }
-                        .filterIsInstance<SongItem>()
-                }.getOrDefault(emptyList()).let { collected += it }
-                if (collected.isNotEmpty()) break
-            }
-        }
-
-        if (collected.filterNot { it.isVideoSong }.isEmpty()) {
+        if (collected.filterNot { it.isVideoSong }.isEmpty() || collected.dedupeItems().size < 12) {
             for (variant in queryVariants(trimmed)) {
                 val page = runCatching { YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO).getOrThrow() }.getOrNull()
                 if (page != null) {
                     collected += page.items.filterIsInstance<SongItem>()
-                    if (continuationOut.isBlank()) continuationOut = page.continuation ?: ""
-                    if (collected.isNotEmpty()) break
+                    if (continuationOut.isNullOrBlank()) continuationOut = page.continuation
                 }
+                if (collected.dedupeItems().size >= 60) break
             }
         }
 
-        val audio = collected.filterNot { it.isVideoSong }.dedupeItems()
-        val videos = collected.filter { it.isVideoSong }.dedupeItems().filterNot { video -> audio.any { it.id == video.id } }
-        mapOf(
-            "items" to (audio + videos).take(40).map { songMap(it) },
-            "continuation" to continuationOut,
-        )
+        val next = continuationOut?.takeIf { it.isNotBlank() } ?: syntheticContinuation(trimmed, 1)
+        pageMap(collected.dedupeItems(), next)
     }
 
     fun searchAlbums(context: Context, query: String): List<Map<String, Any?>> = runBlocking(Dispatchers.IO) {

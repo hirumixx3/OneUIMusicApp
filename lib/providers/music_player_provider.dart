@@ -1204,21 +1204,33 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   Future<void> clearOnlineQuery({bool reloadHome = true}) async {
     searchController.clear();
-    if (_lastOnlineQuery.isEmpty && _onlineSectionIndex == 0) {
-      if (reloadHome && !_hasOnlineHomeContent() && !_isOnlineLoading) {
-        unawaited(searchOnline(forceQuery: '', refresh: true));
-      }
-      notifyListeners();
-      return;
-    }
     _lastOnlineQuery = '';
     _onlineSectionIndex = 0;
-    await _prefs?.setInt(_onlineSectionKey, 0);
+    _onlineSongsContinuation = null;
+    _onlineSongsContinuationQuery = '';
+    _isLoadingMoreOnlineSongs = false;
     _onlineError = null;
-    notifyListeners();
-    if (reloadHome && (!_hasOnlineHomeContent() || _onlineSongs.isEmpty) && !_isOnlineLoading) {
-      unawaited(searchOnline(forceQuery: '', refresh: true));
+    await _prefs?.setInt(_onlineSectionKey, 0);
+
+    // Ao voltar para Início, não deixa resultado antigo de busca virar “home”.
+    // Antes a tela inicial mostrava só o último termo pesquisado, parecendo
+    // vazia/aleatória. Recarrega a home do Innertube de forma explícita.
+    if (reloadHome) {
+      _onlineSongs = const <AudioTrack>[];
+      _onlineAlbums = const <OnlineAlbum>[];
+      _onlineArtists = const <OnlineArtist>[];
+      _onlinePlaylists = const <OnlinePlaylist>[];
+      _onlineRecommendedSongs = const <AudioTrack>[];
+      _onlineRecommendedArtists = const <OnlineArtist>[];
+      _onlineRecommendedPlaylists = const <OnlinePlaylist>[];
+      notifyListeners();
+      if (!_isOnlineLoading) {
+        unawaited(searchOnline(forceQuery: '', refresh: true));
+      }
+      return;
     }
+
+    notifyListeners();
   }
 
   int _normalizeOnlineSectionIndex(int value) {
@@ -2324,6 +2336,15 @@ class MusicPlayerProvider extends ChangeNotifier {
       _onlineSongsContinuation = null;
       _onlineSongsContinuationQuery = '';
       _isLoadingMoreOnlineSongs = false;
+    } else {
+      // Pesquisa nova não deve exibir restos da home/termo anterior enquanto carrega.
+      _onlineSongs = const <AudioTrack>[];
+      _onlineAlbums = const <OnlineAlbum>[];
+      _onlineArtists = const <OnlineArtist>[];
+      _onlinePlaylists = const <OnlinePlaylist>[];
+      _onlineSongsContinuation = null;
+      _onlineSongsContinuationQuery = rawQuery;
+      _isLoadingMoreOnlineSongs = false;
     }
     notifyListeners();
 
@@ -2366,8 +2387,8 @@ class MusicPlayerProvider extends ChangeNotifier {
           _onlineSongs = firstSongs;
           _onlineError = null;
           notifyListeners();
-          if (firstSongs.length < 12 && hasMoreOnlineSongs) {
-            unawaited(loadMoreOnlineSongs());
+          if (firstSongs.length < 60 && hasMoreOnlineSongs) {
+            unawaited(_autoFillOnlineSongs(target: 60, maxPages: 4));
           }
         }
 
@@ -2388,6 +2409,9 @@ class MusicPlayerProvider extends ChangeNotifier {
         _onlineRecommendedArtists = _rankRecommendedArtists(mergedArtists).take(24).toList(growable: false);
         _onlineRecommendedPlaylists = _dedupePlaylists(mergedPlaylists).take(40).toList(growable: false);
         unawaited(_refreshOnlineRecommendations(seedSongs: _onlineSongs));
+        if (_onlineSongs.length < 60 && hasMoreOnlineSongs) {
+          unawaited(_autoFillOnlineSongs(target: 60, maxPages: 4));
+        }
 
         for (final item in _onlineSongs.where((item) => item.isRemote).take(6)) {
           unawaited(_prewarmMetrolistStream(item));
@@ -2605,6 +2629,20 @@ class MusicPlayerProvider extends ChangeNotifier {
     } finally {
       _isLoadingMoreOnlineSongs = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _autoFillOnlineSongs({int target = 60, int maxPages = 4}) async {
+    var pages = 0;
+    while (_lastOnlineQuery.trim().isNotEmpty &&
+        hasMoreOnlineSongs &&
+        _onlineSongs.length < target &&
+        pages < maxPages) {
+      pages += 1;
+      final before = _onlineSongs.length;
+      await loadMoreOnlineSongs();
+      if (_onlineSongs.length <= before && !hasMoreOnlineSongs) break;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
     }
   }
 
