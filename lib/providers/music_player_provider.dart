@@ -537,6 +537,151 @@ class MusicPlayerProvider extends ChangeNotifier {
     return url;
   }
 
+  static const String _syntheticArtistPrefix = 'app-search-artist:';
+  static const String _syntheticAlbumPrefix = 'app-search-album:';
+  static const String _syntheticPlaylistPrefix = 'app-search-playlist:';
+
+  String _packSynthetic(List<String> parts) => Uri.encodeComponent(jsonEncode(parts));
+
+  List<String> _unpackSynthetic(String packed) {
+    final raw = packed.contains(':') ? packed.substring(packed.indexOf(':') + 1) : packed;
+    try {
+      final decoded = jsonDecode(Uri.decodeComponent(raw));
+      if (decoded is List) return decoded.map((item) => '$item').toList(growable: false);
+    } catch (_) {}
+    return const <String>[];
+  }
+
+  List<AudioTrack> _fallbackHomeTracks() {
+    const items = <Map<String, String>>[
+      {'id': 'H5v3kku4y6Q', 'title': 'As It Was', 'artist': 'Harry Styles', "album": "Harry\'s House"},
+      {'id': 'gdZLi9oWNZg', 'title': 'Dynamite', 'artist': 'BTS', 'album': 'Dynamite'},
+      {'id': 'G7KNmW9a75Y', 'title': 'Flowers', 'artist': 'Miley Cyrus', 'album': 'Endless Summer Vacation'},
+      {'id': '4NRXx6U8ABQ', 'title': 'Blinding Lights', 'artist': 'The Weeknd', 'album': 'After Hours'},
+      {'id': 'TUVcZfQe-Kw', 'title': 'Levitating', 'artist': 'Dua Lipa', 'album': 'Future Nostalgia'},
+      {'id': 'JGwWNGJdvx8', 'title': 'Shape of You', 'artist': 'Ed Sheeran', 'album': '÷'},
+      {'id': 'XXYlFuWEuKI', 'title': 'Save Your Tears', 'artist': 'The Weeknd', 'album': 'After Hours'},
+      {'id': 'WcIcVapfqXw', 'title': 'Calm Down', 'artist': 'Rema, Selena Gomez', 'album': 'Calm Down'},
+      {'id': 'kJQP7kiw5Fk', 'title': 'Despacito', 'artist': 'Luis Fonsi, Daddy Yankee', 'album': 'VIDA'},
+    ];
+    return items.map((item) {
+      final id = item['id']!;
+      return AudioTrack.remote(
+        id: 'fallback-$id',
+        title: item['title']!,
+        artist: item['artist']!,
+        album: item['album']!,
+        durationMs: 0,
+        videoId: id,
+        artworkUrl: 'https://i.ytimg.com/vi/$id/hqdefault.jpg',
+        artistId: "$_syntheticArtistPrefix${_packSynthetic(<String>[item['artist']!])}",
+        browseId: "$_syntheticAlbumPrefix${_packSynthetic(<String>[item['album']!, item['artist']!, 'https://i.ytimg.com/vi/$id/hqdefault.jpg'])}",
+      );
+    }).toList(growable: false);
+  }
+
+  List<String> _onlineQueryFallbacks(String rawQuery) {
+    final cleaned = rawQuery.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (cleaned.isEmpty) return const <String>[];
+    final variants = LinkedHashSet<String>();
+    void add(String value) {
+      final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (normalized.isNotEmpty) variants.add(normalized);
+    }
+    add(cleaned);
+    final lower = cleaned.toLowerCase();
+    if (lower == 'txt' || lower == 't x t') {
+      add('TOMORROW X TOGETHER');
+      add('Tomorrow X Together músicas');
+      add('TXT kpop');
+    }
+    add('$cleaned música');
+    add('$cleaned song');
+    add('$cleaned official audio');
+    add('$cleaned album');
+    add('$cleaned playlist');
+    return variants.toList(growable: false);
+  }
+
+  String _firstArtworkFromTracks(Iterable<AudioTrack> tracks) {
+    for (final track in tracks) {
+      final art = (track.artworkUrl ?? '').trim();
+      if (art.isNotEmpty) return art;
+    }
+    return '';
+  }
+
+  List<OnlineAlbum> _albumsFromTracks(Iterable<AudioTrack> tracks, {String? query}) {
+    final map = LinkedHashMap<String, OnlineAlbum>();
+    for (final track in tracks) {
+      final albumTitle = track.album.trim();
+      if (albumTitle.isEmpty || albumTitle.toLowerCase() == 'youtube music' || albumTitle.toLowerCase() == 'desconhecido') continue;
+      final artist = track.artist.trim();
+      final synthetic = "$_syntheticAlbumPrefix${_packSynthetic(<String>[albumTitle, artist, track.artworkUrl ?? ''])}";
+      final key = (track.browseId ?? '').trim().isNotEmpty ? track.browseId!.trim() : '$albumTitle|$artist';
+      map.putIfAbsent(key, () => OnlineAlbum(
+        browseId: (track.browseId ?? '').trim().isNotEmpty ? track.browseId!.trim() : synthetic,
+        title: albumTitle,
+        artist: artist,
+        thumbnailUrl: track.artworkUrl ?? '',
+      ));
+    }
+    if (map.isEmpty && (query ?? '').trim().isNotEmpty && tracks.isNotEmpty) {
+      final q = query!.trim();
+      map['query'] = OnlineAlbum(
+        browseId: "$_syntheticAlbumPrefix${_packSynthetic(<String>['Resultados de $q', q, _firstArtworkFromTracks(tracks)])}",
+        title: 'Resultados de $q',
+        artist: 'YouTube Music',
+        thumbnailUrl: _firstArtworkFromTracks(tracks),
+      );
+    }
+    return _dedupeAlbums(map.values);
+  }
+
+  List<OnlineArtist> _artistsFromTracks(Iterable<AudioTrack> tracks) {
+    final map = LinkedHashMap<String, OnlineArtist>();
+    for (final track in tracks) {
+      final names = track.artist.split(RegExp(r',|&|;')).map((item) => item.trim()).where((item) => item.isNotEmpty && item.toLowerCase() != 'desconhecido');
+      for (final name in names) {
+        final id = (track.artistId ?? '').trim().isNotEmpty ? track.artistId!.trim() : "$_syntheticArtistPrefix${_packSynthetic(<String>[name, track.artworkUrl ?? ''])}";
+        map.putIfAbsent(id, () => OnlineArtist(
+          browseId: id,
+          name: name,
+          thumbnailUrl: track.artworkUrl ?? '',
+        ));
+      }
+    }
+    return _dedupeRecommendedArtists(map.values);
+  }
+
+  List<OnlinePlaylist> _playlistsFromTracks(Iterable<AudioTrack> tracks, {String? query}) {
+    final list = tracks.toList(growable: false);
+    if (list.isEmpty) return const <OnlinePlaylist>[];
+    final q = (query ?? _lastOnlineQuery).trim();
+    final title = q.isEmpty ? 'Mix das recomendações' : 'Resultados de $q';
+    final art = _firstArtworkFromTracks(list);
+    final playlists = <OnlinePlaylist>[
+      OnlinePlaylist(
+        playlistId: "$_syntheticPlaylistPrefix${_packSynthetic(<String>[title, q, art])}",
+        title: title,
+        author: 'YouTube Music',
+        thumbnailUrl: art,
+        songCountText: '${list.length} músicas',
+      ),
+    ];
+    final firstArtist = list.first.artist.trim();
+    if (firstArtist.isNotEmpty && firstArtist.toLowerCase() != 'desconhecido') {
+      playlists.add(OnlinePlaylist(
+        playlistId: "$_syntheticPlaylistPrefix${_packSynthetic(<String>['Mix de $firstArtist', firstArtist, art])}",
+        title: 'Mix de $firstArtist',
+        author: 'YouTube Music',
+        thumbnailUrl: art,
+        songCountText: '${list.where((track) => track.artist.toLowerCase().contains(firstArtist.toLowerCase())).length} músicas',
+      ));
+    }
+    return _dedupePlaylists(playlists);
+  }
+
   Future<OnlineSearchResult> _homeNative() async => _searchResultFromNative(await _invokeMetrolistMap('home'));
 
   Future<OnlineSearchResult> _searchNative(String query) async => _searchResultFromNative(
@@ -779,21 +924,46 @@ class MusicPlayerProvider extends ChangeNotifier {
         _dedupePlaylists(<OnlinePlaylist>[..._onlineRecommendedPlaylists, ..._onlinePlaylists]),
       );
   String get onlineActiveQuery => _lastOnlineQuery.trim().toLowerCase();
-  List<AudioTrack> get onlineDisplaySongs => List.unmodifiable(
-        onlineActiveQuery.isEmpty && _onlineRecommendedSongs.isNotEmpty
-            ? _dedupeTracks(<AudioTrack>[..._onlineRecommendedSongs, ..._onlineSongs])
-            : _onlineSongs,
-      );
-  List<OnlineArtist> get onlineDisplayArtists => List.unmodifiable(
-        onlineActiveQuery.isEmpty
-            ? _dedupeRecommendedArtists(<OnlineArtist>[..._onlineRecommendedArtists, ..._onlineArtists])
-            : _onlineArtists,
-      );
-  List<OnlinePlaylist> get onlineDisplayPlaylists => List.unmodifiable(
-        onlineActiveQuery.isEmpty
-            ? _dedupePlaylists(<OnlinePlaylist>[..._onlineRecommendedPlaylists, ..._onlinePlaylists])
-            : _onlinePlaylists,
-      );
+  List<AudioTrack> get onlineDisplaySongs {
+    final active = onlineActiveQuery.isNotEmpty;
+    final merged = active
+        ? _onlineSongs
+        : _dedupeTracks(<AudioTrack>[..._onlineRecommendedSongs, ..._onlineSongs]);
+    if (!active && merged.isEmpty) {
+      // A home online não pode ficar eternamente em skeleton se o Innertube
+      // demorar/ficar vazio. Estes itens são fallback visual/tocável e são
+      // substituídos assim que a API real retorna conteúdo.
+      return List.unmodifiable(_fallbackHomeTracks());
+    }
+    return List.unmodifiable(merged);
+  }
+
+  List<OnlineAlbum> get onlineDisplayAlbums {
+    final active = onlineActiveQuery.isNotEmpty;
+    final base = _onlineAlbums.isNotEmpty ? _onlineAlbums : _albumsFromTracks(_onlineSongs, query: _lastOnlineQuery);
+    if (!active && base.isEmpty) {
+      return List.unmodifiable(_albumsFromTracks(onlineDisplaySongs, query: 'recomendações'));
+    }
+    return List.unmodifiable(base);
+  }
+
+  List<OnlineArtist> get onlineDisplayArtists {
+    final active = onlineActiveQuery.isNotEmpty;
+    final base = active
+        ? _onlineArtists
+        : _dedupeRecommendedArtists(<OnlineArtist>[..._onlineRecommendedArtists, ..._onlineArtists]);
+    final derived = base.isNotEmpty ? base : _artistsFromTracks(active ? _onlineSongs : onlineDisplaySongs);
+    return List.unmodifiable(_rankRecommendedArtists(derived));
+  }
+
+  List<OnlinePlaylist> get onlineDisplayPlaylists {
+    final active = onlineActiveQuery.isNotEmpty;
+    final base = active
+        ? _onlinePlaylists
+        : _dedupePlaylists(<OnlinePlaylist>[..._onlineRecommendedPlaylists, ..._onlinePlaylists]);
+    final derived = base.isNotEmpty ? base : _playlistsFromTracks(active ? _onlineSongs : onlineDisplaySongs, query: _lastOnlineQuery);
+    return List.unmodifiable(_dedupePlaylists(derived));
+  }
   bool get isOnlineLoading => _isOnlineLoading;
   bool get isLoadingMoreOnlineSongs => _isLoadingMoreOnlineSongs;
   bool get hasMoreOnlineSongs => _lastOnlineQuery.trim().isNotEmpty && (_onlineSongsContinuation ?? '').trim().isNotEmpty;
@@ -2402,12 +2572,53 @@ class MusicPlayerProvider extends ChangeNotifier {
         final mergedArtists = _dedupeRecommendedArtists(<OnlineArtist>[...summaryResult.artists, ...artistsResult]);
         final mergedPlaylists = _dedupePlaylists(<OnlinePlaylist>[...summaryResult.playlists, ...playlistsResult]);
 
-        _onlineSongs = _dedupeTracks(<AudioTrack>[..._onlineSongs, ...firstSongs, ...summaryResult.songs]);
-        _onlineAlbums = mergedAlbums;
-        _onlineArtists = mergedArtists;
-        _onlinePlaylists = mergedPlaylists;
-        _onlineRecommendedArtists = _rankRecommendedArtists(mergedArtists).take(24).toList(growable: false);
-        _onlineRecommendedPlaylists = _dedupePlaylists(mergedPlaylists).take(40).toList(growable: false);
+        var mergedSongs = _dedupeTracks(<AudioTrack>[..._onlineSongs, ...firstSongs, ...summaryResult.songs]);
+        var safeAlbums = mergedAlbums;
+        var safeArtists = mergedArtists;
+        var safePlaylists = mergedPlaylists;
+        if (mergedSongs.isEmpty) {
+          for (final variant in _onlineQueryFallbacks(rawQuery)) {
+            if (variant == rawQuery) continue;
+            try {
+              final extra = await _searchSongsNative(variant).timeout(const Duration(seconds: 4));
+              mergedSongs = _dedupeTracks(<AudioTrack>[...mergedSongs, ...extra]);
+              if (mergedSongs.isNotEmpty) break;
+            } catch (_) {}
+          }
+        }
+        if (safeAlbums.isEmpty) {
+          for (final variant in _onlineQueryFallbacks(rawQuery).take(3)) {
+            try {
+              safeAlbums = _dedupeAlbums(<OnlineAlbum>[...safeAlbums, ...await _searchAlbumsNative(variant).timeout(const Duration(seconds: 4))]);
+              if (safeAlbums.isNotEmpty) break;
+            } catch (_) {}
+          }
+        }
+        if (safeArtists.isEmpty) {
+          for (final variant in _onlineQueryFallbacks(rawQuery).take(3)) {
+            try {
+              safeArtists = _dedupeRecommendedArtists(<OnlineArtist>[...safeArtists, ...await _searchArtistsNative(variant).timeout(const Duration(seconds: 4))]);
+              if (safeArtists.isNotEmpty) break;
+            } catch (_) {}
+          }
+        }
+        if (safePlaylists.isEmpty) {
+          for (final variant in _onlineQueryFallbacks(rawQuery).take(3)) {
+            try {
+              safePlaylists = _dedupePlaylists(<OnlinePlaylist>[...safePlaylists, ...await _searchPlaylistsNative(variant).timeout(const Duration(seconds: 4))]);
+              if (safePlaylists.isNotEmpty) break;
+            } catch (_) {}
+          }
+        }
+        if (safeAlbums.isEmpty) safeAlbums = _albumsFromTracks(mergedSongs, query: rawQuery);
+        if (safeArtists.isEmpty) safeArtists = _artistsFromTracks(mergedSongs);
+        if (safePlaylists.isEmpty) safePlaylists = _playlistsFromTracks(mergedSongs, query: rawQuery);
+        _onlineSongs = mergedSongs;
+        _onlineAlbums = safeAlbums;
+        _onlineArtists = safeArtists;
+        _onlinePlaylists = safePlaylists;
+        _onlineRecommendedArtists = _rankRecommendedArtists(safeArtists).take(24).toList(growable: false);
+        _onlineRecommendedPlaylists = _dedupePlaylists(safePlaylists).take(40).toList(growable: false);
         unawaited(_refreshOnlineRecommendations(seedSongs: _onlineSongs));
         if (_onlineSongs.length < 60 && hasMoreOnlineSongs) {
           unawaited(_autoFillOnlineSongs(target: 60, maxPages: 4));
@@ -2439,7 +2650,7 @@ class MusicPlayerProvider extends ChangeNotifier {
 
     try {
       final result = await _homeNative()
-          .timeout(const Duration(seconds: 14));
+          .timeout(const Duration(seconds: 6));
       if (requestId != _onlineSearchRequestSerial) {
         return;
       }
@@ -2453,40 +2664,13 @@ class MusicPlayerProvider extends ChangeNotifier {
       var mergedPlaylists = result.playlists;
 
       if (rawQuery.isEmpty && mergedSongs.isEmpty) {
-        // A home do Innertube às vezes traz só playlists/chips ou demora para
-        // devolver músicas. Para a aba Online nunca abrir “vazia”, reforçamos
-        // com buscas leves no mesmo módulo do Metrolist, sem bloquear o clique
-        // no player e sem depender de conta Google.
-        final fallbackTerms = <String>[
-          ..._onlineSearchHistory.take(3),
-          ..._topPreferredArtists(limit: 3),
-          'hits Brasil',
-          'músicas em alta',
-          'lançamentos música',
-          'pop internacional',
-          'funk hits',
-          'sertanejo universitário',
-        ];
-        final seenFallbackTerms = <String>{};
-        for (final term in fallbackTerms) {
-          final query = term.trim();
-          if (query.isEmpty || !seenFallbackTerms.add(query.toLowerCase())) continue;
-          try {
-            final extraSongs = await _searchSongsNative(query).timeout(const Duration(seconds: 4));
-            mergedSongs = _dedupeTracks(<AudioTrack>[...mergedSongs, ...extraSongs]);
-            if (mergedSongs.length >= 18) break;
-          } catch (_) {}
-        }
+        // Não bloqueia a home com várias buscas sequenciais. Mostra fallback
+        // imediato e deixa as recomendações reais chegarem em background.
+        mergedSongs = _fallbackHomeTracks();
       }
 
       if (rawQuery.isEmpty && mergedPlaylists.isEmpty) {
-        for (final term in const <String>['mixes Brasil', 'playlists para você', 'músicas populares']) {
-          try {
-            final extraPlaylists = await _searchPlaylistsNative(term).timeout(const Duration(seconds: 4));
-            mergedPlaylists = _dedupePlaylists(<OnlinePlaylist>[...mergedPlaylists, ...extraPlaylists]);
-            if (mergedPlaylists.length >= 10) break;
-          } catch (_) {}
-        }
+        mergedPlaylists = _playlistsFromTracks(mergedSongs, query: 'recomendações');
       }
 
       if (rawQuery.isNotEmpty) {
@@ -2514,6 +2698,13 @@ class MusicPlayerProvider extends ChangeNotifier {
       if (requestId != _onlineSearchRequestSerial) {
         return;
       }
+
+      if (rawQuery.isEmpty && mergedSongs.isEmpty && mergedPlaylists.isEmpty && mergedArtists.isEmpty && mergedAlbums.isEmpty) {
+        mergedSongs = _fallbackHomeTracks();
+      }
+      if (mergedAlbums.isEmpty) mergedAlbums = _albumsFromTracks(mergedSongs, query: rawQuery);
+      if (mergedArtists.isEmpty) mergedArtists = _artistsFromTracks(mergedSongs);
+      if (mergedPlaylists.isEmpty) mergedPlaylists = _playlistsFromTracks(mergedSongs, query: rawQuery);
 
       _onlineSongs = mergedSongs;
       _onlineAlbums = mergedAlbums;
@@ -2563,9 +2754,9 @@ class MusicPlayerProvider extends ChangeNotifier {
               fallbackPlaylists = await _searchPlaylistsNative(rawQuery).timeout(const Duration(seconds: 5));
             } catch (_) {}
             _onlineSongs = fallbackSongs;
-            _onlineAlbums = const <OnlineAlbum>[];
-            _onlineArtists = fallbackArtists;
-            _onlinePlaylists = fallbackPlaylists;
+            _onlineAlbums = _albumsFromTracks(fallbackSongs, query: rawQuery);
+            _onlineArtists = fallbackArtists.isNotEmpty ? fallbackArtists : _artistsFromTracks(fallbackSongs);
+            _onlinePlaylists = fallbackPlaylists.isNotEmpty ? fallbackPlaylists : _playlistsFromTracks(fallbackSongs, query: rawQuery);
             _onlineError = null;
             return;
           }
@@ -2646,8 +2837,89 @@ class MusicPlayerProvider extends ChangeNotifier {
     }
   }
 
+  Future<OnlineAlbumPage> _loadSyntheticAlbum(String key) async {
+    final parts = _unpackSynthetic(key);
+    final title = parts.isNotEmpty ? parts[0] : 'Resultados';
+    final artist = parts.length > 1 ? parts[1] : 'YouTube Music';
+    final art = parts.length > 2 ? parts[2] : '';
+    var tracks = _onlineSongs.where((track) {
+      final albumMatch = track.album.toLowerCase().contains(title.toLowerCase()) || title.toLowerCase().contains(track.album.toLowerCase());
+      final artistMatch = artist.isEmpty || track.artist.toLowerCase().contains(artist.toLowerCase());
+      return albumMatch || artistMatch;
+    }).toList(growable: false);
+    if (tracks.isEmpty) {
+      for (final variant in _onlineQueryFallbacks('$artist $title').take(3)) {
+        try {
+          tracks = _dedupeTracks(<AudioTrack>[...tracks, ...await _searchSongsNative(variant).timeout(const Duration(seconds: 5))]);
+          if (tracks.isNotEmpty) break;
+        } catch (_) {}
+      }
+    }
+    return OnlineAlbumPage(
+      album: OnlineAlbum(browseId: key, title: title, artist: artist, thumbnailUrl: art),
+      tracks: tracks,
+    );
+  }
+
+  Future<OnlineArtistPage> _loadSyntheticArtist(String key) async {
+    final parts = _unpackSynthetic(key);
+    final name = parts.isNotEmpty ? parts[0] : 'Artista';
+    final art = parts.length > 1 ? parts[1] : '';
+    var tracks = _onlineSongs.where((track) => track.artist.toLowerCase().contains(name.toLowerCase())).toList(growable: false);
+    if (tracks.isEmpty) {
+      for (final variant in _onlineQueryFallbacks(name).take(3)) {
+        try {
+          tracks = _dedupeTracks(<AudioTrack>[...tracks, ...await _searchSongsNative(variant).timeout(const Duration(seconds: 5))]);
+          if (tracks.isNotEmpty) break;
+        } catch (_) {}
+      }
+    }
+    var albums = _albumsFromTracks(tracks, query: name);
+    var playlists = _playlistsFromTracks(tracks, query: name);
+    try {
+      albums = _dedupeAlbums(<OnlineAlbum>[...albums, ...await _searchAlbumsNative(name).timeout(const Duration(seconds: 5))]);
+    } catch (_) {}
+    try {
+      playlists = _dedupePlaylists(<OnlinePlaylist>[...playlists, ...await _searchPlaylistsNative(name).timeout(const Duration(seconds: 5))]);
+    } catch (_) {}
+    return OnlineArtistPage(
+      artist: OnlineArtist(browseId: key, name: name, thumbnailUrl: art),
+      topSongs: tracks,
+      albums: albums,
+      playlists: playlists,
+    );
+  }
+
+  Future<OnlinePlaylistPage> _loadSyntheticPlaylist(String key) async {
+    final parts = _unpackSynthetic(key);
+    final title = parts.isNotEmpty ? parts[0] : 'Playlist';
+    final query = parts.length > 1 ? parts[1] : _lastOnlineQuery;
+    final art = parts.length > 2 ? parts[2] : '';
+    var tracks = query.trim().isEmpty
+        ? List<AudioTrack>.from(_onlineSongs)
+        : _onlineSongs.where((track) {
+            final q = query.toLowerCase();
+            return track.title.toLowerCase().contains(q) || track.artist.toLowerCase().contains(q) || track.album.toLowerCase().contains(q);
+          }).toList(growable: false);
+    if (tracks.isEmpty && query.trim().isNotEmpty) {
+      for (final variant in _onlineQueryFallbacks(query).take(3)) {
+        try {
+          tracks = _dedupeTracks(<AudioTrack>[...tracks, ...await _searchSongsNative(variant).timeout(const Duration(seconds: 5))]);
+          if (tracks.isNotEmpty) break;
+        } catch (_) {}
+      }
+    }
+    return OnlinePlaylistPage(
+      playlist: OnlinePlaylist(playlistId: key, title: title, author: 'YouTube Music', thumbnailUrl: art, songCountText: '${tracks.length} músicas'),
+      tracks: tracks,
+    );
+  }
+
   Future<OnlineAlbumPage> loadOnlineAlbum(String browseId) {
     final key = browseId.trim();
+    if (key.startsWith(_syntheticAlbumPrefix)) {
+      return _loadSyntheticAlbum(key);
+    }
     final cached = _onlineAlbumPageFutures[key];
     if (cached != null) return cached;
     final future = _albumNative(key).catchError((Object error, StackTrace stackTrace) {
@@ -2660,6 +2932,9 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   Future<OnlineArtistPage> loadOnlineArtist(String browseId) {
     final key = browseId.trim();
+    if (key.startsWith(_syntheticArtistPrefix)) {
+      return _loadSyntheticArtist(key);
+    }
     final cached = _onlineArtistPageFutures[key];
     if (cached != null) return cached;
     final future = _artistNative(key).catchError((Object error, StackTrace stackTrace) {
@@ -2707,7 +2982,10 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<OnlinePlaylistPage> loadOnlinePlaylist(String playlistId) {
-    final key = playlistId.trim();
+    final key = playlistId.trim().replaceFirst(RegExp(r'^VL'), '');
+    if (key.startsWith(_syntheticPlaylistPrefix)) {
+      return _loadSyntheticPlaylist(key);
+    }
     final cached = _onlinePlaylistPageFutures[key];
     if (cached != null) return cached;
     final future = _playlistNative(key).catchError((Object error, StackTrace stackTrace) {

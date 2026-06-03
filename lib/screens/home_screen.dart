@@ -1195,7 +1195,7 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
     final bottomPadding = provider.currentTrack == null ? 92.0 : 188.0;
     final active = provider.onlineActiveQuery.isNotEmpty;
     final songs = provider.onlineDisplaySongs;
-    final albums = provider.onlineAlbums;
+    final albums = provider.onlineDisplayAlbums;
     final artists = provider.onlineDisplayArtists;
     final playlists = provider.onlineDisplayPlaylists;
     final showAll = _filterIndex == 0;
@@ -2683,7 +2683,7 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
         ..._metrolistAlbumRailSlivers(
           context: context,
           title: 'Álbuns para você',
-          albums: provider.onlineAlbums,
+          albums: provider.onlineDisplayAlbums,
           take: 12,
         ),
         ..._metrolistSongRailSlivers(

@@ -610,14 +610,9 @@ object MetrolistOnlineBridge {
 
         if (trimmed.isBlank()) return@runBlocking resultMap(emptyList(), emptyList(), null)
 
-        // Most important path for the UI: return something immediately after the user presses
-        // the keyboard search button. The Innertube filtered music search can return empty or
-        // stall on some devices/accounts, so use the public YouTube result page first as a
-        // safety net. Playback still uses the Metrolist/YTPlayerUtils pipeline by videoId.
-        val immediateFallback = fetchYoutubeWebSongMaps(trimmed, page = 0, limit = 80)
-        if (immediateFallback.isNotEmpty()) {
-            return@runBlocking resultMap(emptyList(), immediateFallback, syntheticContinuation(trimmed, 1))
-        }
+        // First try the real Metrolist/Innertube music search. The old web
+        // fallback can be slow/empty and was starving the native result before
+        // Flutter's timeout, causing searches to show nothing.
 
         val collected = mutableListOf<SongItem>()
         var continuationOut: String? = null
