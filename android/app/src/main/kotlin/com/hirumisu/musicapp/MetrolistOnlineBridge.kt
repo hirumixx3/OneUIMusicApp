@@ -17,6 +17,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -319,10 +321,7 @@ object MetrolistOnlineBridge {
                 .put("params", params)
                 .toString()
             val raw = runCatching {
-                val requestBody = okhttp3.RequestBody.create(
-                    okhttp3.MediaType.parse("application/json; charset=utf-8"),
-                    body,
-                )
+                val requestBody = body.toRequestBody("application/json; charset=utf-8".toMediaType())
                 val request = Request.Builder()
                     .url("https://music.youtube.com/youtubei/v1/search?prettyPrint=false&key=$apiKey")
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
