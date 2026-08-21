@@ -60,6 +60,7 @@ object MetrolistStreamResolver {
         val durationMs: Long,
         val title: String,
         val source: String,
+        val requestHeaders: Map<String, String> = emptyMap(),
     )
 
     private data class CachedPlayback(
@@ -204,9 +205,10 @@ object MetrolistStreamResolver {
         quality: AudioQuality,
         connectivityManager: ConnectivityManager,
     ): NativePlayback {
-        // Perfis nativos costumam devolver URLs diretas e não dependem do
-        // PoToken WEB_REMIX. Também usam o endpoint www.youtube.com, evitando
-        // o bloqueio anti-automação observado no music.youtube.com.
+        // Perfis nativos devolvem URLs diretas e não dependem do PoToken do
+        // WEB_REMIX. A chamada permanece na sessão Innertube do YouTube Music;
+        // encaminhá-la a www.youtube.com provocou a página anti-automação que
+        // aparece no log do aparelho.
         resolveWithVerifiedNativeFallbacks(videoId, quality)?.let { return it }
 
         val metrolistResult = withTimeoutOrNull(12_000L) {
@@ -220,8 +222,16 @@ object MetrolistStreamResolver {
         val metrolistData = metrolistResult.getOrNull()
         if (metrolistData != null && metrolistData.streamUrl.isNotBlank()) {
             val transformed = prepareUrl(metrolistData.streamUrl)
-            val metrolistClientName = "YTPlayerUtils.playerResponseForPlayback"
-            if (transformed != null && isRangePlayable(transformed, metrolistClientName, metrolistData.format.contentLength)) {
+            val metrolistClientName = metrolistData.streamClient
+                .takeUnless { it.isBlank() || it == "unknown" }
+                ?: "YTPlayerUtils.playerResponseForPlayback"
+            if (transformed != null && isRangePlayable(
+                    transformed,
+                    metrolistClientName,
+                    metrolistData.format.contentLength,
+                    metrolistData.streamHeaders,
+                )
+            ) {
                 return NativePlayback(
                     url = transformed,
                     mimeType = metrolistData.format.mimeType.substringBefore(";"),
@@ -232,6 +242,7 @@ object MetrolistStreamResolver {
                     durationMs = ((metrolistData.videoDetails?.lengthSeconds ?: "0").toLongOrNull() ?: 0L) * 1000L,
                     title = metrolistData.videoDetails?.title ?: "",
                     source = metrolistClientName,
+                    requestHeaders = metrolistData.streamHeaders,
                 )
             } else if (transformed != null) {
                 Timber.tag(TAG).w("YTPlayerUtils returned a URL that failed byte validation for %s", videoId)
@@ -244,17 +255,28 @@ object MetrolistStreamResolver {
 
     private suspend fun resolveWithVerifiedNativeFallbacks(videoId: String, quality: AudioQuality): NativePlayback? {
         val clients = listOf(
+            // Keep this order aligned with current Metrolist. IOS still returns
+            // URLs on some networks, but those URLs now commonly fail halfway
+            // through with HTTP 403. VisionOS and current Android VR profiles
+            // are the non-PoToken fallbacks used for normal public playback.
+            YouTubeClient.VISIONOS,
+            YouTubeClient.ANDROID_VR_1_65_10,
+            YouTubeClient.ANDROID_VR_1_43_32,
             YouTubeClient.ANDROID_VR_1_61_48,
             YouTubeClient.ANDROID_VR_NO_AUTH,
-            YouTubeClient.IOS,
+            YouTubeClient.ANDROID_NO_SDK,
             YouTubeClient.MOBILE,
-            YouTubeClient.TVHTML5_SIMPLY_EMBEDDED_PLAYER,
-            YouTubeClient.WEB,
-            YouTubeClient.WEB_CREATOR,
+            YouTubeClient.IOS,
         )
 
         for (client in clients) {
             if (client.loginRequired && YouTube.cookie.isNullOrBlank()) continue
+            if (client.requirePoToken) continue
+            Timber.tag(TAG).i(
+                "Trying Innertube stream client=%s version=%s",
+                client.clientName,
+                client.clientVersion,
+            )
             val response = withTimeoutOrNull(6500L) {
                 YouTube.player(
                     videoId = videoId,
@@ -263,9 +285,22 @@ object MetrolistStreamResolver {
                     signatureTimestamp = null,
                     poToken = null,
                 ).getOrNull()
-            } ?: continue
+            }
+            if (response == null) {
+                Timber.tag(TAG).w("No player response from %s", client.clientName)
+                continue
+            }
 
-            if (response.playabilityStatus.status != "OK") continue
+            if (response.playabilityStatus.status != "OK") {
+                Timber.tag(TAG).w(
+                    "Player status %s for %s (%s)",
+                    response.playabilityStatus.status,
+                    client.clientName,
+                    response.playabilityStatus.reason,
+                )
+                continue
+            }
+            val requestHeaders = streamHeadersFor(client)
             val formats = response.streamingData?.adaptiveFormats.orEmpty()
                 .filter { it.isAudio }
                 .sortedWith(formatComparator(quality))
@@ -302,7 +337,7 @@ object MetrolistStreamResolver {
 
                 for (candidate in candidateUrls) {
                     val prepared = prepareUrl(candidate) ?: continue
-                    if (!isRangePlayable(prepared, client.clientName, format.contentLength)) {
+                    if (!isRangePlayable(prepared, client.clientName, format.contentLength, requestHeaders)) {
                         Timber.tag(TAG).w("Skipping %s stream for %s because byte validation failed", client.clientName, videoId)
                         continue
                     }
@@ -315,34 +350,22 @@ object MetrolistStreamResolver {
                         contentLength = format.contentLength,
                         durationMs = ((response.videoDetails?.lengthSeconds ?: "0").toLongOrNull() ?: 0L) * 1000L,
                         title = response.videoDetails?.title ?: "",
-                        source = client.clientName,
+                        source = "${client.clientName}/${client.clientVersion}",
+                        requestHeaders = requestHeaders,
                     )
                 }
             }
         }
 
-        val streamInfoUrls = runCatching { NewPipeExtractor.newPipePlayer(videoId) }.getOrDefault(emptyList())
-        for ((itag, url) in streamInfoUrls) {
-            if (!url.startsWith("http://") && !url.startsWith("https://")) continue
-            val prepared = prepareUrl(url) ?: continue
-            if (!isRangePlayable(prepared, "newpipe_streaminfo")) continue
-            return NativePlayback(
-                url = prepared,
-                mimeType = "audio/webm",
-                bitrate = 0,
-                itag = itag,
-                expiresInSeconds = 1800,
-                contentLength = null,
-                durationMs = 0L,
-                title = "",
-                source = "newpipe_streaminfo",
-            )
-        }
-
         return null
     }
 
-    private fun isRangePlayable(url: String, source: String = "", contentLength: Long? = null): Boolean {
+    private fun isRangePlayable(
+        url: String,
+        source: String = "",
+        contentLength: Long? = null,
+        requestHeaders: Map<String, String> = streamHeadersForSource(source),
+    ): Boolean {
         val probes = mutableListOf(0L to 1L, 1_048_576L to 1_048_577L)
         val total = contentLength?.takeIf { it > 2_097_152L }
         if (total != null) {
@@ -359,8 +382,7 @@ object MetrolistStreamResolver {
                     .get()
                     .header("Range", "bytes=$start-$end")
                     .header("Accept-Encoding", "identity")
-                    .header("Accept", "*/*")
-                    .header("User-Agent", userAgentForSource(source))
+                requestHeaders.forEach { (name, value) -> builder.header(name, value) }
                 YouTube.cookie?.let { builder.header("Cookie", it) }
                 httpClient.newCall(builder.build()).execute().use { response ->
                     val success = response.code == 200 || response.code == 206
@@ -436,6 +458,33 @@ object MetrolistStreamResolver {
             normalized.contains("ANDROID") ->
                 "com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip"
             else -> UPSTREAM_USER_AGENT
+        }
+    }
+
+    private fun streamHeadersFor(client: YouTubeClient): Map<String, String> =
+        streamHeadersForSource(client.clientName, client.userAgent)
+
+    private fun streamHeadersForSource(
+        source: String,
+        explicitUserAgent: String? = null,
+    ): Map<String, String> = buildMap {
+        put("User-Agent", explicitUserAgent ?: userAgentForSource(source))
+        put("Accept", "*/*")
+        put("Accept-Language", "en-US,en;q=0.9")
+
+        when {
+            source.contains("WEB_REMIX", ignoreCase = true) -> {
+                put("Referer", "https://music.youtube.com/")
+                put("Origin", "https://music.youtube.com")
+            }
+            source.contains("WEB_CREATOR", ignoreCase = true) -> {
+                put("Referer", "https://studio.youtube.com/")
+                put("Origin", "https://studio.youtube.com")
+            }
+            else -> {
+                put("Referer", "https://www.youtube.com/")
+                put("Origin", "https://www.youtube.com")
+            }
         }
     }
 
@@ -819,8 +868,7 @@ private object MetrolistNativeStreamServer {
             .get()
             .header("Range", "bytes=$start-$safeEnd")
             .header("Accept-Encoding", "identity")
-            .header("Accept", "*/*")
-            .header("User-Agent", userAgentForSource(playback.source))
+        playback.requestHeaders.forEach { (name, value) -> builder.header(name, value) }
 
         YouTube.cookie?.let { builder.header("Cookie", it) }
         return MetrolistStreamResolver.httpClient.newCall(builder.build()).execute()

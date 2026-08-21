@@ -225,16 +225,12 @@ class InnerTube {
         playlistId: String?,
         signatureTimestamp: Int?,
         poToken: String? = null,
-        useMusicEndpoint: Boolean = false,
     ) = withRetry {
-        val origin = if (useMusicEndpoint) {
-            YouTubeClient.ORIGIN_YOUTUBE_MUSIC
-        } else {
-            YouTubeClient.ORIGIN_YOUTUBE
-        }
-        val endpoint = "$origin/youtubei/v1/player"
-        httpClient.post(endpoint) {
-            ytClient(client, setLogin = true, origin = origin)
+        // Keep player requests on the same Innertube host/session used by
+        // search and browse. Sending native clients through www.youtube.com
+        // triggers Google's browser anti-automation page on some networks.
+        httpClient.post("player") {
+            ytClient(client, setLogin = true)
             setBody(
                 PlayerBody(
                     context = client.toContext(locale, visitorData, dataSyncId).let {
