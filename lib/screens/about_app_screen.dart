@@ -11,7 +11,8 @@ import 'equalizer_screen.dart';
 class AboutAppScreen extends StatelessWidget {
   const AboutAppScreen({super.key});
 
-  static const String _phoneNumber = '+5511954792230';
+  // Used only to build the deep link; intentionally not shown in the UI.
+  static const String _telegramPhoneNumber = '+5511954792230';
 
   @override
   Widget build(BuildContext context) {
@@ -60,17 +61,9 @@ class AboutAppScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   _SelectableInfoTile(
-                    icon: Icons.chat_rounded,
-                    title: t.whatsapp,
-                    value: _phoneNumber,
-                    helper: t.tapToOpen,
-                    onTap: () => _openWhatsApp(context),
-                  ),
-                  const SizedBox(height: 10),
-                  _SelectableInfoTile(
                     icon: Icons.send_rounded,
                     title: t.telegram,
-                    value: _phoneNumber,
+                    value: t.telegramContactHint,
                     helper: t.tapToOpen,
                     onTap: () => _openTelegram(context),
                   ),
@@ -114,17 +107,8 @@ class AboutAppScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _openWhatsApp(BuildContext context) async {
-    final phoneDigits = _phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-    final uris = [
-      Uri.parse('whatsapp://send?phone=$phoneDigits'),
-      Uri.parse('https://wa.me/$phoneDigits'),
-    ];
-    await _launchFirstAvailable(context, uris);
-  }
-
   Future<void> _openTelegram(BuildContext context) async {
-    final phoneDigits = _phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
+    final phoneDigits = _telegramPhoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
     final uris = [
       Uri.parse('tg://resolve?phone=$phoneDigits'),
       Uri.parse('https://t.me/+${phoneDigits}'),

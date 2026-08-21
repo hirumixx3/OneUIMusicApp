@@ -10,6 +10,7 @@ import '../providers/music_player_provider.dart';
 import '../screens/about_app_screen.dart';
 import '../screens/equalizer_screen.dart';
 import '../screens/player_screen.dart';
+import '../screens/settings_screen.dart';
 import '../ui/one_ui_9.dart';
 import '../widgets/floating_player_bar.dart';
 import '../widgets/lazy_artwork.dart';
@@ -22,6 +23,7 @@ enum HomeMenuAction {
   sortAlphabetical,
   sortArtist,
   equalizer,
+  settings,
   about,
 }
 
@@ -687,6 +689,14 @@ class _HomeScreenState extends State<HomeScreen>
                                         ),
                                       );
                                       break;
+                                    case HomeMenuAction.settings:
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const SettingsScreen(),
+                                        ),
+                                      );
+                                      break;
                                     case HomeMenuAction.about:
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
@@ -714,6 +724,10 @@ class _HomeScreenState extends State<HomeScreen>
                                   PopupMenuItem(
                                     value: HomeMenuAction.equalizer,
                                     child: Text(t.equalizer),
+                                  ),
+                                  PopupMenuItem(
+                                    value: HomeMenuAction.settings,
+                                    child: Text(t.settings),
                                   ),
                                   PopupMenuItem(
                                     value: HomeMenuAction.about,

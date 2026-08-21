@@ -106,6 +106,9 @@ class MusicPlayerProvider extends ChangeNotifier {
   static const _equalizerEnabledKey = 'equalizer_enabled';
   static const _equalizerBandLevelsKey = 'equalizer_band_levels';
   static const _equalizerPresetKey = 'equalizer_preset';
+  static const _glassEffectsEnabledKey = 'glass_effects_enabled';
+  static const _glassBlurAmountKey = 'glass_blur_amount';
+  static const _glassTransparencyAmountKey = 'glass_transparency_amount';
   static const _libraryCacheFileName = 'library_cache_v1.json';
 
   final AudioPlayer player = AudioRuntime.sharedPlayer;
@@ -221,6 +224,9 @@ class MusicPlayerProvider extends ChangeNotifier {
   int? _audioSessionId;
   EqualizerPreset _equalizerPreset = EqualizerPreset.balanced;
   List<EqualizerBandSetting> _equalizerBands = const <EqualizerBandSetting>[];
+  bool _glassEffectsEnabled = true;
+  double _glassBlurAmount = 1.0;
+  double _glassTransparencyAmount = 1.0;
 
   final StreamController<Duration> _nativePositionController = StreamController<Duration>.broadcast();
   final StreamController<Duration?> _nativeDurationController = StreamController<Duration?>.broadcast();
@@ -1156,6 +1162,9 @@ class MusicPlayerProvider extends ChangeNotifier {
   List<EqualizerBandSetting> get equalizerBands => List.unmodifiable(
         _equalizerBands.where((band) => band.centerMilliHz > 0).toList(growable: false),
       );
+  bool get glassEffectsEnabled => _glassEffectsEnabled;
+  double get glassBlurAmount => _glassBlurAmount;
+  double get glassTransparencyAmount => _glassTransparencyAmount;
 
   String get query => searchController.text.trim().toLowerCase();
 
@@ -1261,6 +1270,9 @@ class MusicPlayerProvider extends ChangeNotifier {
     _tab = LibraryTab.values[_prefs?.getInt(_tabKey) ?? 0];
     _onlineSectionIndex = _normalizeOnlineSectionIndex((_prefs?.getInt(_onlineSectionKey) ?? 0));
     _equalizerEnabled = _prefs?.getBool(_equalizerEnabledKey) ?? true;
+    _glassEffectsEnabled = _prefs?.getBool(_glassEffectsEnabledKey) ?? true;
+    _glassBlurAmount = _prefs?.getDouble(_glassBlurAmountKey) ?? 1.0;
+    _glassTransparencyAmount = _prefs?.getDouble(_glassTransparencyAmountKey) ?? 1.0;
     _equalizerPreset = EqualizerPreset.values[_prefs?.getInt(_equalizerPresetKey) ?? 0];
     final savedEqualizerLevelsRaw = _prefs?.getString(_equalizerBandLevelsKey) ?? '[]';
     try {
@@ -4434,6 +4446,27 @@ class MusicPlayerProvider extends ChangeNotifier {
       <String, dynamic>{'enabled': enabled},
     );
     _applyEqualizerPayload(response, notify: true);
+  }
+
+  Future<void> setGlassEffectsEnabled(bool enabled) async {
+    if (_glassEffectsEnabled == enabled) return;
+    _glassEffectsEnabled = enabled;
+    await _prefs?.setBool(_glassEffectsEnabledKey, enabled);
+    notifyListeners();
+  }
+
+  Future<void> setGlassBlurAmount(double amount) async {
+    final clamped = amount.clamp(0.0, 1.0);
+    _glassBlurAmount = clamped;
+    await _prefs?.setDouble(_glassBlurAmountKey, clamped);
+    notifyListeners();
+  }
+
+  Future<void> setGlassTransparencyAmount(double amount) async {
+    final clamped = amount.clamp(0.0, 1.0);
+    _glassTransparencyAmount = clamped;
+    await _prefs?.setDouble(_glassTransparencyAmountKey, clamped);
+    notifyListeners();
   }
 
   Future<void> setEqualizerBandLevel(int bandIndex, int level) async {

@@ -60,12 +60,28 @@ class AppStrings {
   String get equalizerDescriptionTrebleBoost => _pick('Aumenta brilho e definição das frequências altas.', 'Increases brightness and definition in the high frequencies.', '高域の明るさと解像感を高めます。');
   String get equalizerDescriptionCustom => _pick('Ajuste manual das bandas do equalizador.', 'Manual adjustment of the equalizer bands.', 'イコライザーの各バンドを手動で調整します。');
   String get developedBy => _pick('Desenvolvido por', 'Developed by', '開発者');
+  String get settings => _pick('Configurações', 'Settings', '設定');
+  String get appearance => _pick('Aparência', 'Appearance', '外観');
+  String get glassEffects => _pick('Efeitos de vidro', 'Glass effects', 'ガラス効果');
+  String get glassEffectsDescription => _pick(
+        'Ativa ou desativa o blur e a transparência das superfícies do app.',
+        'Turns the blur and transparency of the app surfaces on or off.',
+        'アプリ内の表面のぼかしと透明度をオン・オフします。',
+      );
+  String get blurIntensity => _pick('Intensidade do blur', 'Blur intensity', 'ぼかしの強さ');
+  String get transparencyIntensity => _pick('Intensidade da transparência', 'Transparency intensity', '透明度の強さ');
+  String get glassEffectsDisabledHint => _pick(
+        'Ative os efeitos de vidro acima para ajustar o blur e a transparência.',
+        'Turn on glass effects above to adjust blur and transparency.',
+        '上のガラス効果をオンにすると、ぼかしと透明度を調整できます。',
+      );
   String get language => _pick('Idioma', 'Language', '言語');
   String get portuguese => 'Português';
   String get english => 'English';
   String get japanese => '日本語';
   String get whatsapp => 'WhatsApp';
   String get telegram => 'Telegram';
+  String get telegramContactHint => _pick('Fale comigo pelo Telegram', 'Message me on Telegram', 'Telegramでメッセージを送る');
   String get tapToOpen => _pick('Toque para abrir', 'Tap to open', 'タップして開く');
   String get tapToCopy => _pick('Toque para copiar', 'Tap to copy', 'タップしてコピー');
   String copied(String label) => _pick('$label copiado.', '$label copied.', '$label をコピーしました。');

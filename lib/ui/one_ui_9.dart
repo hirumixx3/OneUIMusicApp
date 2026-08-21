@@ -1,6 +1,9 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/music_player_provider.dart';
 
 /// Shared One UI 9 inspired visual language used by the whole application.
 ///
@@ -302,6 +305,28 @@ extension OneUi9Context on BuildContext {
   Color get oneUiShadow => oneUiDark
       ? Colors.black.withOpacity(0.34)
       : const Color(0xFF778AB8).withOpacity(0.18);
+
+  /// 0.0 disables blur entirely, 1.0 applies the full designed blur.
+  double get oneUiBlurFactor {
+    final provider = Provider.of<MusicPlayerProvider>(this, listen: true);
+    if (!provider.glassEffectsEnabled) return 0.0;
+    return provider.glassBlurAmount.clamp(0.0, 1.0);
+  }
+
+  /// 0.0 renders fully solid/opaque surfaces, 1.0 applies the full designed
+  /// translucency.
+  double get oneUiTransparencyFactor {
+    final provider = Provider.of<MusicPlayerProvider>(this, listen: true);
+    if (!provider.glassEffectsEnabled) return 0.0;
+    return provider.glassTransparencyAmount.clamp(0.0, 1.0);
+  }
+}
+
+/// Scales a translucent [color]'s alpha toward fully opaque as [factor]
+/// drops from 1.0 (original design) to 0.0 (solid, no transparency).
+Color _oneUiScaledOpacity(Color color, double factor) {
+  final targetAlpha = lerpDouble(1.0, color.opacity, factor.clamp(0.0, 1.0))!;
+  return color.withOpacity(targetAlpha);
 }
 
 /// Atmospheric wallpaper rendered once behind the app's transparent routes.
@@ -436,31 +461,46 @@ class OneUi9Glass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(radius);
-    final surface =
+    final blurFactor = context.oneUiBlurFactor;
+    final transparencyFactor = context.oneUiTransparencyFactor;
+    final baseSurface =
         tint ?? (strong ? context.oneUiGlassStrong : context.oneUiGlass);
+    final surface = _oneUiScaledOpacity(baseSurface, transparencyFactor);
+    final effectiveBlur = blur * blurFactor;
     final glass = ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        filter: ImageFilter.blur(sigmaX: effectiveBlur, sigmaY: effectiveBlur),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: surface,
             borderRadius: borderRadius,
-            border: Border.all(color: borderColor ?? context.oneUiOutline),
+            border: Border.all(
+              color: _oneUiScaledOpacity(
+                borderColor ?? context.oneUiOutline,
+                transparencyFactor,
+              ),
+            ),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(
-                  clear
-                      ? (context.oneUiDark ? 0.11 : 0.30)
-                      : (context.oneUiDark ? 0.12 : 0.46),
+                _oneUiScaledOpacity(
+                  Colors.white.withOpacity(
+                    clear
+                        ? (context.oneUiDark ? 0.11 : 0.30)
+                        : (context.oneUiDark ? 0.12 : 0.46),
+                  ),
+                  transparencyFactor,
                 ),
                 surface,
-                OneUi9.accent.withOpacity(
-                  clear
-                      ? (context.oneUiDark ? 0.025 : 0.018)
-                      : (context.oneUiDark ? 0.035 : 0.025),
+                _oneUiScaledOpacity(
+                  OneUi9.accent.withOpacity(
+                    clear
+                        ? (context.oneUiDark ? 0.025 : 0.018)
+                        : (context.oneUiDark ? 0.035 : 0.025),
+                  ),
+                  transparencyFactor,
                 ),
               ],
               stops: const [0, 0.42, 1],
