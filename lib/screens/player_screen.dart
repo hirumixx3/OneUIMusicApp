@@ -7,6 +7,7 @@ import '../l10n/app_strings.dart';
 import '../models/audio_track.dart';
 import '../providers/music_player_provider.dart' as music_provider;
 import '../screens/equalizer_screen.dart';
+import '../ui/one_ui_9.dart';
 import '../widgets/lazy_artwork.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -88,7 +89,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
@@ -197,10 +197,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final t = AppStrings.of(context);
     final previousTracks = provider.queuePreviousTracks;
     final nextTracks = provider.queueNextTracks;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? const Color(0xFF252632) : const Color(0xFFE1E4ED);
-    final surface = isDark ? const Color(0xFF12151D) : Colors.white;
-    final secondary = isDark ? Colors.white70 : Colors.black54;
+    final border = context.oneUiOutline;
+    final secondary = context.oneUiSecondary;
 
     if (previousTracks.isEmpty && nextTracks.isEmpty) {
       return const SizedBox.shrink();
@@ -235,12 +233,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(18),
                 onTap: () => playQueuedTrack(item),
-                child: Ink(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF171A24) : const Color(0xFFF7F8FD),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: border),
-                  ),
+                child: OneUi9Glass(
+                  radius: 18,
+                  blur: 10,
+                  showShadow: false,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     child: Row(
@@ -319,14 +315,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
-    return Container(
-      width: double.infinity,
+    return OneUi9Glass(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface.withOpacity(isDark ? 0.72 : 0.94),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: border),
-      ),
+      radius: 28,
+      blur: 18,
+      strong: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -357,12 +350,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (track == null) {
       return Scaffold(
         body: SafeArea(
-          child: Center(
-            child: Text(
-              t.noTrackPlaying,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
+          child: OneUi9EmptyState(message: t.noTrackPlaying),
         ),
       );
     }
@@ -374,24 +362,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final showLyrics = _showLyrics && hasLyrics;
     final screenWidth = MediaQuery.of(context).size.width;
     final artworkSize = (screenWidth - 56).clamp(260.0, 360.0).toDouble();
-    final secondary = isDark ? Colors.white70 : Colors.black54;
-    final surface = isDark ? const Color(0xFF12151D) : Colors.white;
+    final secondary = context.oneUiSecondary;
+    final surface = context.oneUiGlassStrong;
     final waitingRemoteStart = false; // não bloqueia a tela com 'preparando' para streams online
-    final border = isDark ? const Color(0xFF252632) : const Color(0xFFE1E4ED);
+    final border = context.oneUiOutline;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: isDark
-                  ? const [Color(0xFF090A0E), Color(0xFF111827), Color(0xFF090A0E)]
-                  : const [Color(0xFFF5F6FB), Color(0xFFEAEFFF), Color(0xFFF5F6FB)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-          child: SingleChildScrollView(
+        child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
             child: StreamBuilder<Duration?>(
               stream: provider.playbackDurationStream,
@@ -495,22 +474,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ],
                     ),
                     const SizedBox(height: 18),
-                    Container(
+                    SizedBox(
                       width: artworkSize,
                       height: artworkSize,
-                      decoration: BoxDecoration(
-                        color: surface,
-                        borderRadius: BorderRadius.circular(34),
-                        border: Border.all(color: border),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x22000000),
-                            blurRadius: 24,
-                            offset: Offset(0, 12),
-                          ),
-                        ],
-                      ),
-                      child: Stack(
+                      child: OneUi9Glass(
+                        radius: 38,
+                        blur: 24,
+                        strong: true,
+                        padding: const EdgeInsets.all(8),
+                        child: Stack(
                         children: [
                           Positioned.fill(
                             child: GestureDetector(
@@ -558,8 +530,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ),
                             ),
-
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -660,8 +632,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               onChanged: (newValue) {
                                 provider.seek(Duration(milliseconds: newValue.toInt()));
                               },
-                              playedColor: const Color(0xFFD2C0FF),
-                              remainingColor: isDark ? const Color(0xFF4B4E5A) : const Color(0xFFD7DBE8),
+                              playedColor: Theme.of(context).colorScheme.primary,
+                              remainingColor: context.oneUiSecondary.withOpacity(0.30),
                               height: 34,
                             ),
                             Row(
@@ -695,10 +667,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         const SizedBox(width: 16),
                         FilledButton(
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF7395FF),
+                            backgroundColor: isDark ? OneUi9.accentSoft : OneUi9.accent,
                             foregroundColor: const Color(0xFF0D172B),
                             shape: const CircleBorder(),
                             padding: const EdgeInsets.all(24),
+                            shadowColor: OneUi9.accent.withOpacity(0.44),
+                            elevation: 8,
                           ),
                           onPressed: provider.togglePlayback,
                           child: Icon(
@@ -726,14 +700,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     _queueSection(context, provider, track),
                     if (provider.queuePreviousTracks.isNotEmpty || provider.queueNextTracks.isNotEmpty)
                       const SizedBox(height: 18),
-                    Container(
-                      width: double.infinity,
+                    OneUi9Glass(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: surface.withOpacity(isDark ? 0.72 : 0.94),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: border),
-                      ),
+                      radius: 28,
+                      blur: 18,
+                      strong: true,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -780,7 +751,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
               },
             ),
           ),
-        ),
       ),
     );
   }
@@ -791,13 +761,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     Widget? iconWidget,
     required VoidCallback? onPressed,
   }) {
-    return IconButton(
-      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      splashRadius: 22,
-      onPressed: onPressed,
-      icon: iconWidget ?? Icon(icon),
+    return OneUi9Glass(
+      radius: 21,
+      blur: 12,
+      showShadow: false,
+      child: SizedBox.square(
+        dimension: 42,
+        child: IconButton(
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          onPressed: onPressed,
+          icon: iconWidget ?? Icon(icon),
+        ),
+      ),
     );
   }
 

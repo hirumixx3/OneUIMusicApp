@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'audio/audio_runtime.dart';
 import 'providers/music_player_provider.dart';
 import 'screens/home_screen.dart';
+import 'ui/one_ui_9.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -76,32 +77,19 @@ class _MusicAppState extends State<MusicApp> with WidgetsBindingObserver {
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
         statusBarBrightness: dark ? Brightness.dark : Brightness.light,
-        systemNavigationBarColor: dark ? const Color(0xFF090A0E) : const Color(0xFFF5F6FB),
+        systemNavigationBarColor: dark ? const Color(0xFF070B13) : const Color(0xFFF5F7FF),
         systemNavigationBarIconBrightness: dark ? Brightness.light : Brightness.dark,
         systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
       ),
     );
-
-    const seed = Color(0xFF7A4DFF);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Music',
       themeMode: ThemeMode.system,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light),
-        scaffoldBackgroundColor: const Color(0xFFF5F6FB),
-        fontFamily: 'Roboto',
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
-        scaffoldBackgroundColor: const Color(0xFF090A0E),
-        fontFamily: 'Roboto',
-      ),
+      theme: OneUi9.theme(Brightness.light),
+      darkTheme: OneUi9.theme(Brightness.dark),
       locale: provider.locale,
       supportedLocales: const [
         Locale('pt', 'BR'),
@@ -114,6 +102,9 @@ class _MusicAppState extends State<MusicApp> with WidgetsBindingObserver {
         GlobalCupertinoLocalizations.delegate,
       ],
       navigatorKey: appNavigatorKey,
+      builder: (context, child) => OneUi9Backdrop(
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: const HomeScreen(),
     );
   }

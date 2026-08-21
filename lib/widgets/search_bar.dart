@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui/one_ui_9.dart';
+
 class MusicSearchField extends StatelessWidget {
   const MusicSearchField({
     super.key,
@@ -16,25 +18,27 @@ class MusicSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fill = isDark ? const Color(0xFF131315) : Colors.white;
-    final border = isDark ? const Color(0xFF27272D) : const Color(0xFFD4D6DC);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: border),
-      ),
+    return OneUi9Glass(
+      radius: 26,
+      blur: 18,
+      showShadow: false,
       child: TextField(
         controller: controller,
         style: Theme.of(context).textTheme.bodyLarge,
-        textInputAction: TextInputAction.go,
+        textInputAction: TextInputAction.search,
         onSubmitted: onSubmitted,
         decoration: InputDecoration(
+          filled: false,
           border: InputBorder.none,
-          prefixIcon: const Icon(Icons.search_rounded),
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          prefixIcon: Icon(Icons.search_rounded, color: context.oneUiSecondary),
           hintText: hintText,
-          contentPadding: const EdgeInsets.symmetric(vertical: 18),
+          hintStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: context.oneUiSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+          contentPadding: const EdgeInsets.symmetric(vertical: 17),
         ),
       ),
     );

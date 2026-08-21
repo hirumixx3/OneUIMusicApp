@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/audio_track.dart';
 import '../providers/music_player_provider.dart';
+import '../ui/one_ui_9.dart';
 
 class LazyArtwork extends StatelessWidget {
   const LazyArtwork({
@@ -77,9 +78,13 @@ class LazyArtwork extends StatelessWidget {
 
   Widget _fallback() {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF8F5BFF), Color(0xFF2C184E)],
+          colors: [
+            OneUi9.accentSoft,
+            OneUi9.violet,
+            OneUi9.accent.withOpacity(0.92),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_strings.dart';
 import '../providers/music_player_provider.dart';
+import '../ui/one_ui_9.dart';
 import 'equalizer_screen.dart';
 
 class AboutAppScreen extends StatelessWidget {
@@ -16,24 +17,21 @@ class AboutAppScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF090A0E) : const Color(0xFFF5F6FB);
-    final card = isDark ? const Color(0xFF14161D) : Colors.white;
-    final border = isDark ? const Color(0xFF252632) : const Color(0xFFE4E6EC);
 
     return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        title: Text(t.aboutApp),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        children: [
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+          children: [
+            OneUi9PageHeader(
+              title: t.aboutApp,
+              subtitle: 'Music • One UI 9 Liquid Glass',
+              onBack: () => Navigator.pop(context),
+              large: true,
+            ),
+            const SizedBox(height: 24),
           _SectionCard(
-            color: card,
-            border: border,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -76,8 +74,6 @@ class AboutAppScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            color: card,
-            border: border,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -102,7 +98,8 @@ class AboutAppScreen extends StatelessWidget {
               ],
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -154,23 +151,17 @@ class AboutAppScreen extends StatelessWidget {
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
     required this.child,
-    required this.color,
-    required this.border,
   });
 
   final Widget child;
-  final Color color;
-  final Color border;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return OneUi9Glass(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: border),
-      ),
+      radius: 30,
+      blur: 20,
+      strong: true,
       child: child,
     );
   }
@@ -196,18 +187,25 @@ class _SelectableInfoTile extends StatelessWidget {
     final secondary = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(21),
       onTap: onTap,
-      child: Container(
+      child: OneUi9Glass(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: secondary.withOpacity(0.18)),
-        ),
+        radius: 21,
+        blur: 10,
+        showShadow: false,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withOpacity(context.oneUiDark ? 0.24 : 0.14),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

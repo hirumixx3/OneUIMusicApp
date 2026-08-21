@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_strings.dart';
 import '../providers/music_player_provider.dart';
+import '../ui/one_ui_9.dart';
 
 class EqualizerScreen extends StatelessWidget {
   const EqualizerScreen({super.key});
@@ -11,11 +12,7 @@ class EqualizerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF050608) : const Color(0xFFF3F5FB);
-    final card = isDark ? const Color(0xFF141416) : Colors.white;
-    final border = isDark ? const Color(0xFF1F2026) : const Color(0xFFE3E6F0);
-    final secondary = isDark ? Colors.white70 : Colors.black54;
+    final secondary = context.oneUiSecondary;
 
     final presetOrder = <EqualizerPreset>[
       EqualizerPreset.balanced,
@@ -30,40 +27,36 @@ class EqualizerScreen extends StatelessWidget {
     final equalizerActive = equalizerReady && provider.equalizerEnabled;
 
     return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        titleSpacing: 0,
-        title: Text(
-          t.equalizer,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        actions: [
-          IconButton(
-            tooltip: equalizerActive ? t.equalizerStatusActive : t.equalizerStatusOff,
-            onPressed: provider.equalizerSupported ? () => provider.setEqualizerEnabled(!provider.equalizerEnabled) : null,
-            icon: Icon(
-              equalizerActive ? Icons.equalizer_rounded : Icons.equalizer_outlined,
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
+          children: [
+            OneUi9PageHeader(
+              title: t.equalizer,
+              subtitle: t.equalizerOnlyAppAudio,
+              onBack: () => Navigator.pop(context),
+              large: true,
+              actions: [
+                OneUi9IconButton(
+                  tooltip: equalizerActive ? t.equalizerStatusActive : t.equalizerStatusOff,
+                  onPressed: provider.equalizerSupported ? () => provider.setEqualizerEnabled(!provider.equalizerEnabled) : null,
+                  icon: equalizerActive ? Icons.equalizer_rounded : Icons.equalizer_outlined,
+                  active: equalizerActive,
+                ),
+                OneUi9IconButton(
+                  tooltip: t.equalizerReset,
+                  onPressed: provider.equalizerBands.isEmpty ? null : () => provider.resetEqualizer(),
+                  icon: Icons.restart_alt_rounded,
+                ),
+              ],
             ),
-          ),
-          IconButton(
-            tooltip: t.equalizerReset,
-            onPressed: provider.equalizerBands.isEmpty ? null : () => provider.resetEqualizer(),
-            icon: const Icon(Icons.restart_alt_rounded),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-        children: [
-          Container(
+            const SizedBox(height: 24),
+          OneUi9Glass(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-            decoration: BoxDecoration(
-              color: card,
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: border),
-            ),
+            radius: 32,
+            blur: 20,
+            strong: true,
             child: Column(
               children: [
                 Row(
@@ -133,7 +126,8 @@ class EqualizerScreen extends StatelessWidget {
                 : t.equalizerOnlyAppAudio,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: secondary, height: 1.35),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -152,10 +146,9 @@ class _EqualizerChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lineColor = isDark ? const Color(0xFF1B1C22) : const Color(0xFFE8ECF6);
-    final inactive = isDark ? Colors.white38 : Colors.black26;
-    final active = const Color(0xFFC8D8EE);
+    final lineColor = context.oneUiOutline.withOpacity(0.52);
+    final inactive = context.oneUiSecondary.withOpacity(0.34);
+    final active = Theme.of(context).colorScheme.primary;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -306,32 +299,36 @@ class _PresetButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final width = (screenWidth - 54) * widthFactor;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark ? const Color(0xFF2A2A33) : const Color(0xFFD8DDEC);
+    final accent = Theme.of(context).colorScheme.primary;
     return SizedBox(
       width: width,
-      child: Material(
-        color: selected ? const Color(0xFFC8D8EE) : (isDark ? const Color(0xFF1C1D24) : Colors.white),
-        borderRadius: BorderRadius.circular(28),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(28),
-          onTap: onTap,
-          child: Container(
-            height: 92,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: selected ? const Color(0xFFDCE9FF) : border),
-            ),
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: selected ? const Color(0xFF172033) : null,
-                    fontSize: 20,
+      child: OneUi9Glass(
+        radius: 28,
+        blur: 14,
+        showShadow: false,
+        tint: selected ? accent.withOpacity(context.oneUiDark ? 0.25 : 0.14) : null,
+        borderColor: selected ? accent.withOpacity(0.48) : context.oneUiOutline,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(28),
+            onTap: onTap,
+            child: SizedBox(
+              height: 92,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: selected ? accent : null,
+                          fontSize: 20,
+                        ),
                   ),
+                ),
+              ),
             ),
           ),
         ),

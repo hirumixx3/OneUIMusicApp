@@ -10,6 +10,7 @@ import '../providers/music_player_provider.dart';
 import '../screens/about_app_screen.dart';
 import '../screens/equalizer_screen.dart';
 import '../screens/player_screen.dart';
+import '../ui/one_ui_9.dart';
 import '../widgets/floating_player_bar.dart';
 import '../widgets/lazy_artwork.dart';
 import '../widgets/music_list_tile.dart';
@@ -172,7 +173,6 @@ Future<void> _showAddTracksToPlaylistSheet(BuildContext context, UserPlaylist pl
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -255,7 +255,6 @@ Future<void> _showAddTracksToPlaylistSheet(BuildContext context, UserPlaylist pl
 void _showOnlineAccountSheet(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -477,9 +476,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF090A0E) : const Color(0xFFF5F6FB);
-    final card = isDark ? const Color(0xFF14161D) : Colors.white;
-    final subtle = isDark ? Colors.white70 : Colors.black54;
+    final card = context.oneUiGlass;
+    final subtle = context.oneUiSecondary;
 
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final hasFloatingPlayer = provider.currentTrack != null && !keyboardOpen;
@@ -496,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return WillPopScope(
       onWillPop: _handleSystemBack,
       child: Scaffold(
-        backgroundColor: bg,
+        backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -507,19 +505,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Column(
                   children: [
                     _OnlineMainHeader(
-                      isDark: isDark,
                       shellIndex: _onlineShellIndex,
-                      onOpenHistory: () {
-                        setState(() => _onlineShellIndex = 0);
-                        provider.setOnlineSectionIndex(4);
-                      },
                       onSearch: () => setState(() => _onlineShellIndex = 1),
                       onRefresh: () {
                         final query = provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text.trim() : '';
                         provider.searchOnline(forceQuery: query, refresh: true);
                       },
-                      onOpenEqualizer: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen())),
-                      onOpenAccount: provider.isLoggedIn ? () => _showOnlineAccountSheet(context) : null,
+                      onOpenAccount: () => _showOnlineAccountSheet(context),
                       onOpenMenu: () => _showOnlineNavigationSheet(context, provider),
                     ),
                     const SizedBox(height: 16),
@@ -546,81 +538,122 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Column(
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          'Music',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -1.1,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'SUA BIBLIOTECA',
+                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.25,
+                                    ),
                               ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Music',
+                                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                                      fontSize: 40,
+                                      height: 1,
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
-                        const Spacer(),
-                        IconButton(
+                        OneUi9IconButton(
                           onPressed: provider.scanLibrary,
-                          icon: const Icon(Icons.refresh_rounded),
+                          icon: Icons.refresh_rounded,
+                          tooltip: 'Atualizar biblioteca',
                         ),
-                        PopupMenuButton<HomeMenuAction>(
-                          tooltip: t.menu,
-                          icon: const Icon(Icons.menu_rounded),
-                          onSelected: (value) {
-                            switch (value) {
-                              case HomeMenuAction.sortLaunch:
-                                provider.setSortMode(SortMode.launch);
-                                break;
-                              case HomeMenuAction.sortAlphabetical:
-                                provider.setSortMode(SortMode.alphabetical);
-                                break;
-                              case HomeMenuAction.sortArtist:
-                                provider.setSortMode(SortMode.artist);
-                                break;
-                              case HomeMenuAction.equalizer:
-                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()));
-                                break;
-                              case HomeMenuAction.about:
-                                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()));
-                                break;
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            PopupMenuItem(value: HomeMenuAction.sortLaunch, child: Text(t.sortRelease)),
-                            PopupMenuItem(value: HomeMenuAction.sortAlphabetical, child: Text(t.sortAlphabetical)),
-                            PopupMenuItem(value: HomeMenuAction.sortArtist, child: Text(t.sortByArtist)),
-                            const PopupMenuDivider(),
-                            PopupMenuItem(value: HomeMenuAction.equalizer, child: Text(t.equalizer)),
-                            PopupMenuItem(value: HomeMenuAction.about, child: Text(t.aboutApp)),
-                          ],
+                        const SizedBox(width: 8),
+                        OneUi9Glass(
+                          radius: 23,
+                          blur: 14,
+                          showShadow: false,
+                          child: SizedBox.square(
+                            dimension: 46,
+                            child: PopupMenuButton<HomeMenuAction>(
+                              tooltip: t.menu,
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.more_horiz_rounded),
+                              onSelected: (value) {
+                                switch (value) {
+                                  case HomeMenuAction.sortLaunch:
+                                    provider.setSortMode(SortMode.launch);
+                                    break;
+                                  case HomeMenuAction.sortAlphabetical:
+                                    provider.setSortMode(SortMode.alphabetical);
+                                    break;
+                                  case HomeMenuAction.sortArtist:
+                                    provider.setSortMode(SortMode.artist);
+                                    break;
+                                  case HomeMenuAction.equalizer:
+                                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()));
+                                    break;
+                                  case HomeMenuAction.about:
+                                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()));
+                                    break;
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                PopupMenuItem(value: HomeMenuAction.sortLaunch, child: Text(t.sortRelease)),
+                                PopupMenuItem(value: HomeMenuAction.sortAlphabetical, child: Text(t.sortAlphabetical)),
+                                PopupMenuItem(value: HomeMenuAction.sortArtist, child: Text(t.sortByArtist)),
+                                const PopupMenuDivider(),
+                                PopupMenuItem(value: HomeMenuAction.equalizer, child: Text(t.equalizer)),
+                                PopupMenuItem(value: HomeMenuAction.about, child: Text(t.aboutApp)),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 18),
                     MusicSearchField(
                       controller: provider.searchController,
                       isDark: isDark,
                       hintText: t.searchHint,
                     ),
-                    const SizedBox(height: 14),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TabBar(
-                        controller: _controller,
-                        isScrollable: true,
-                        indicatorColor: Colors.transparent,
-                        dividerColor: Colors.transparent,
-                        tabAlignment: TabAlignment.start,
-                        overlayColor: WidgetStateProperty.all(Colors.transparent),
-                        labelPadding: const EdgeInsets.only(right: 18),
-                        labelStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
-                        unselectedLabelStyle: Theme.of(context).textTheme.titleLarge?.copyWith(color: subtle),
-                        tabs: [
-                          Tab(text: t.tracks),
-                          Tab(text: t.albums),
-                          Tab(text: t.artists),
-                          Tab(text: t.favorites),
-                          Tab(text: t.online),
-                        ],
+                    const SizedBox(height: 12),
+                    OneUi9Glass(
+                      radius: 25,
+                      blur: 16,
+                      showShadow: false,
+                      child: SizedBox(
+                        height: 50,
+                        child: TabBar(
+                          controller: _controller,
+                          isScrollable: true,
+                          tabAlignment: TabAlignment.start,
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicatorPadding: const EdgeInsets.all(4),
+                          indicator: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(isDark ? 0.24 : 0.14),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+                            ),
+                          ),
+                          labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+                          labelStyle: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                          unselectedLabelStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                color: subtle,
+                                fontWeight: FontWeight.w700,
+                              ),
+                          tabs: [
+                            Tab(text: t.tracks),
+                            Tab(text: t.albums),
+                            Tab(text: t.artists),
+                            Tab(text: t.favorites),
+                            Tab(text: t.online),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Expanded(
                       child: (provider.isLoading && provider.tracks.isEmpty)
                           ? const Center(child: CircularProgressIndicator())
@@ -684,7 +717,6 @@ void _showOnlineNavigationSheet(BuildContext context, MusicPlayerProvider provid
   final t = AppStrings.of(context);
   showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (sheetContext) {
       Widget item(IconData icon, String label, VoidCallback onTap) {
@@ -705,20 +737,14 @@ void _showOnlineNavigationSheet(BuildContext context, MusicPlayerProvider provid
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).dividerColor.withOpacity(0.55),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
+              const OneUi9SheetHandle(),
               const SizedBox(height: 12),
               item(Icons.library_music_rounded, t.tracks, () => provider.setTab(LibraryTab.tracks)),
               item(Icons.album_rounded, t.albums, () => provider.setTab(LibraryTab.albums)),
               item(Icons.person_rounded, t.artists, () => provider.setTab(LibraryTab.artists)),
               item(Icons.favorite_rounded, t.favorites, () => provider.setTab(LibraryTab.favorites)),
               const Divider(),
+              item(Icons.history_rounded, 'Histórico online', () => provider.setOnlineSectionIndex(4)),
               item(Icons.equalizer_rounded, t.equalizer, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()))),
               item(Icons.info_outline_rounded, t.aboutApp, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()))),
             ],
@@ -736,7 +762,6 @@ Future<void> _showOnlineSearchSheet(BuildContext context) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (sheetContext) {
         final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
@@ -747,14 +772,7 @@ Future<void> _showOnlineSearchSheet(BuildContext context) async {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).dividerColor.withOpacity(0.55),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
+                const OneUi9SheetHandle(),
                 const SizedBox(height: 16),
                 TextField(
                   controller: controller,
@@ -808,81 +826,100 @@ Future<void> _showOnlineSearchSheet(BuildContext context) async {
 
 class _OnlineMainHeader extends StatelessWidget {
   const _OnlineMainHeader({
-    required this.isDark,
     required this.shellIndex,
-    required this.onOpenHistory,
     required this.onSearch,
     required this.onRefresh,
-    required this.onOpenEqualizer,
     required this.onOpenMenu,
     required this.onOpenAccount,
   });
 
-  final bool isDark;
   final int shellIndex;
-  final VoidCallback onOpenHistory;
   final VoidCallback onSearch;
   final VoidCallback onRefresh;
-  final VoidCallback onOpenEqualizer;
   final VoidCallback onOpenMenu;
   final VoidCallback? onOpenAccount;
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
-    final foreground = isDark ? const Color(0xFFE1E4C4) : const Color(0xFF202416);
+    final foreground = context.oneUiForeground;
     Widget iconButton(IconData icon, VoidCallback onTap, {String? tooltip}) {
-      return IconButton(
-        tooltip: tooltip,
+      return OneUi9IconButton(
         onPressed: onTap,
-        color: foreground.withOpacity(0.90),
-        icon: Icon(icon),
-        iconSize: 24,
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(6),
-        constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+        icon: icon,
+        tooltip: tooltip,
+        size: 40,
+        iconSize: 21,
       );
     }
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: Text(
-            shellIndex == 1 ? 'Pesquisar' : shellIndex == 2 ? 'Biblioteca' : 'Início',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1.0,
-                  color: foreground,
-                ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ONLINE',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.25,
+                    ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                shellIndex == 1 ? 'Pesquisar' : shellIndex == 2 ? 'Biblioteca' : 'Início',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                      fontSize: 32,
+                      height: 1,
+                      color: foreground,
+                    ),
+              ),
+            ],
           ),
         ),
-        iconButton(Icons.history_rounded, onOpenHistory, tooltip: 'Histórico'),
-        iconButton(Icons.search_rounded, onSearch, tooltip: 'Pesquisar'),
         iconButton(Icons.refresh_rounded, onRefresh, tooltip: 'Atualizar'),
+        const SizedBox(width: 6),
+        iconButton(Icons.search_rounded, onSearch, tooltip: 'Pesquisar'),
+        const SizedBox(width: 6),
         if (provider.isLoggedIn && onOpenAccount != null)
           Padding(
-            padding: const EdgeInsets.only(left: 4),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onOpenAccount,
-              child: CircleAvatar(
-                radius: 18,
-                backgroundColor: const Color(0xFF8BAA3F),
-                backgroundImage: provider.accountPhoto.trim().isNotEmpty ? NetworkImage(provider.accountPhoto) : null,
-                child: provider.accountPhoto.trim().isEmpty
-                    ? Text(
-                        provider.accountName.trim().isNotEmpty ? provider.accountName.trim()[0].toUpperCase() : 'U',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
-                      )
-                    : null,
+            padding: const EdgeInsets.only(left: 6),
+            child: OneUi9Glass(
+              radius: 20,
+              blur: 14,
+              showShadow: false,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onOpenAccount,
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: CircleAvatar(
+                    radius: 17,
+                    backgroundColor: OneUi9.accent,
+                    backgroundImage: provider.accountPhoto.trim().isNotEmpty ? NetworkImage(provider.accountPhoto) : null,
+                    child: provider.accountPhoto.trim().isEmpty
+                        ? Text(
+                            provider.accountName.trim().isNotEmpty ? provider.accountName.trim()[0].toUpperCase() : 'U',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                          )
+                        : null,
+                  ),
+                ),
               ),
             ),
           )
         else
-          Icon(Icons.person_outline_rounded, color: foreground.withOpacity(0.52)),
-        iconButton(Icons.menu_rounded, onOpenMenu, tooltip: 'Menu'),
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: iconButton(Icons.person_outline_rounded, onOpenAccount ?? onOpenMenu, tooltip: 'Conta'),
+          ),
+        const SizedBox(width: 6),
+        iconButton(Icons.more_horiz_rounded, onOpenMenu, tooltip: 'Menu'),
       ],
     );
   }
@@ -1075,23 +1112,17 @@ class _MetrolistBottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xF0101117) : const Color(0xF7FFFFFF);
     final selected = Theme.of(context).colorScheme.primary;
-    final unselected = isDark ? Colors.white70 : Colors.black54;
+    final unselected = context.oneUiSecondary;
     return SafeArea(
       top: false,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        child: Container(
-          height: 72,
-          decoration: BoxDecoration(
-            color: bg,
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(isDark ? 0.06 : 0.0))),
-            boxShadow: const [
-              BoxShadow(color: Color(0x33000000), blurRadius: 24, offset: Offset(0, -10)),
-            ],
-          ),
+      minimum: const EdgeInsets.fromLTRB(14, 0, 14, 7),
+      child: OneUi9Glass(
+        radius: 30,
+        blur: 24,
+        strong: true,
+        child: SizedBox(
+          height: 70,
           child: Row(
             children: [
               _MetrolistNavItem(
@@ -1158,6 +1189,7 @@ class _MetrolistNavItem extends StatelessWidget {
               decoration: BoxDecoration(
                 color: selected ? selectedColor.withOpacity(0.18) : Colors.transparent,
                 borderRadius: BorderRadius.circular(22),
+                border: selected ? Border.all(color: selectedColor.withOpacity(0.22)) : null,
               ),
               child: Icon(icon, color: color, size: 27),
             ),
@@ -1437,13 +1469,18 @@ class _OnlineSearchHistoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-      leading: Icon(Icons.history_rounded, color: subtle),
-      title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
-      trailing: const Icon(Icons.north_west_rounded, size: 20),
-      onTap: onTap,
+    return OneUi9Glass(
+      radius: 22,
+      blur: 10,
+      showShadow: false,
+      margin: const EdgeInsets.only(bottom: 7),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+        leading: Icon(Icons.history_rounded, color: context.oneUiSecondary),
+        title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+        trailing: const Icon(Icons.north_west_rounded, size: 20),
+        onTap: onTap,
+      ),
     );
   }
 }
@@ -1625,28 +1662,28 @@ class _LibraryShortcutCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      borderRadius: BorderRadius.circular(24),
-      onTap: onTap,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Icon(icon, size: 46, color: Theme.of(context).colorScheme.primary),
-              const Spacer(),
-              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
-              const SizedBox(height: 4),
-              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
-            ],
+    return OneUi9Glass(
+      radius: 26,
+      blur: 16,
+      showShadow: false,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(26),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(icon, size: 46, color: Theme.of(context).colorScheme.primary),
+                const Spacer(),
+                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.oneUiSecondary)),
+              ],
+            ),
           ),
         ),
       ),
@@ -1944,15 +1981,11 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
                   MaterialPageRoute(builder: (_) => OnlineArtistScreen(artist: artist)),
                 );
               },
-              child: Container(
+              child: OneUi9Glass(
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: widget.card,
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF252632) : const Color(0xFFE4E6EC),
-                  ),
-                ),
+                radius: 26,
+                blur: 12,
+                showShadow: false,
                 child: Row(
                   children: [
                     SizedBox(
@@ -2012,15 +2045,11 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
                 ),
               );
             },
-            child: Container(
+            child: OneUi9Glass(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: widget.card,
-                borderRadius: BorderRadius.circular(26),
-                border: Border.all(
-                  color: isDark ? const Color(0xFF252632) : const Color(0xFFE4E6EC),
-                ),
-              ),
+              radius: 26,
+              blur: 12,
+              showShadow: false,
               child: Row(
                 children: [
                   SizedBox(width: 74, height: 74, child: _ArtworkCard(track: coverTrack)),
@@ -2757,20 +2786,20 @@ class _OnlineInlineSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-      ),
+    return OneUi9Glass(
+      radius: 26,
+      blur: 18,
+      showShadow: false,
       child: TextField(
         controller: controller,
         textInputAction: TextInputAction.search,
         onSubmitted: onSubmitted,
         onEditingComplete: () => onSubmitted(controller.text),
         decoration: InputDecoration(
+          filled: false,
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
           prefixIcon: const Icon(Icons.search_rounded),
           suffixIcon: IconButton(
             tooltip: 'Limpar busca',
@@ -2795,11 +2824,13 @@ class _OnlineSubPageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        IconButton(
+        OneUi9IconButton(
           onPressed: onBack,
-          icon: const Icon(Icons.arrow_back_rounded),
+          icon: Icons.arrow_back_rounded,
           tooltip: 'Voltar',
+          size: 42,
         ),
+        const SizedBox(width: 12),
         Expanded(
           child: Text(
             title,
@@ -2852,27 +2883,26 @@ class _YoutubeMusicChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accent = Theme.of(context).colorScheme.primary;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withOpacity(isDark ? 0.28 : 0.18)
-                : (isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.08)),
-            borderRadius: BorderRadius.circular(14),
-            border: selected ? Border.all(color: accent.withOpacity(0.55)) : null,
-          ),
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: selected ? accent : null,
-                ),
+    return OneUi9Glass(
+      radius: 17,
+      blur: 12,
+      showShadow: false,
+      tint: selected ? accent.withOpacity(isDark ? 0.23 : 0.13) : null,
+      borderColor: selected ? accent.withOpacity(0.42) : context.oneUiOutline,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(17),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 10),
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: selected ? accent : null,
+                  ),
+            ),
           ),
         ),
       ),
@@ -2922,16 +2952,12 @@ class _OnlineEmptyHomeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
+    return OneUi9Glass(
       margin: const EdgeInsets.fromLTRB(4, 0, 4, 24),
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.07) : Colors.black.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-      ),
+      radius: 24,
+      blur: 16,
+      showShadow: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3019,38 +3045,43 @@ class _YoutubeMusicTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _RemoteArtworkBox(imageUrl: imageUrl, radius: 12),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: const LinearGradient(
-                          colors: [Colors.transparent, Color(0xAA000000)],
-                          begin: Alignment.center,
-                          end: Alignment.bottomCenter,
+              child: OneUi9Glass(
+                radius: 16,
+                blur: 10,
+                showShadow: false,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _RemoteArtworkBox(imageUrl: imageUrl, radius: 15),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          gradient: const LinearGradient(
+                            colors: [Colors.transparent, Color(0xB3000000)],
+                            begin: Alignment.center,
+                            end: Alignment.bottomCenter,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    left: 10,
-                    right: 8,
-                    bottom: 8,
-                    child: Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            height: 1.05,
-                          ),
+                    Positioned(
+                      left: 10,
+                      right: 8,
+                      bottom: 8,
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              height: 1.05,
+                            ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
@@ -3059,7 +3090,7 @@ class _YoutubeMusicTile extends StatelessWidget {
                 subtitle!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).brightness == Brightness.dark ? Colors.white60 : Colors.black54),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.oneUiSecondary),
               ),
             ],
           ],
@@ -3084,18 +3115,31 @@ class _YoutubeSongRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white60 : Colors.black54;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      minLeadingWidth: 52,
-      leading: _RemoteArtworkBox(imageUrl: track.artworkUrl ?? '', size: 54, radius: 8),
-      title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
-      subtitle: Text('${track.artist} • Tocou ${((track.id.hashCode.abs() % 90) + 10)} mi vezes', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: subtle)),
-      trailing: IconButton(
-        onPressed: onFavoriteTap,
-        icon: Icon(isFavorite ? Icons.favorite_rounded : Icons.more_vert_rounded),
+    return OneUi9Glass(
+      radius: 21,
+      blur: 10,
+      showShadow: false,
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(9, 4, 5, 4),
+        minLeadingWidth: 52,
+        leading: _RemoteArtworkBox(imageUrl: track.artworkUrl ?? '', size: 54, radius: 15),
+        title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(
+          '${track.artist} • Tocou ${((track.id.hashCode.abs() % 90) + 10)} mi vezes',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: context.oneUiSecondary),
+        ),
+        trailing: IconButton(
+          tooltip: isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
+          onPressed: onFavoriteTap,
+          icon: Icon(
+            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            color: isFavorite ? const Color(0xFFFF6B8A) : context.oneUiSecondary,
+          ),
+        ),
+        onTap: onTap,
       ),
-      onTap: onTap,
     );
   }
 }
@@ -3144,12 +3188,12 @@ class _OnlineSectionChip extends StatelessWidget {
       label: Text(label),
       selected: selected,
       onSelected: (_) => onTap(),
-      backgroundColor: isDark ? const Color(0xFF14161D) : Colors.white,
+      backgroundColor: context.oneUiGlass,
       selectedColor: const Color(0xFF7395FF).withOpacity(0.22),
       side: BorderSide(
         color: selected
             ? const Color(0xFF7395FF)
-            : (isDark ? const Color(0xFF252632) : const Color(0xFFE4E6EC)),
+            : context.oneUiOutline,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -3243,14 +3287,10 @@ class _OnlineArtistRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF111216) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isDark ? const Color(0xFF252632) : const Color(0xFFE4E6EC),
-            ),
-          ),
+        child: OneUi9Glass(
+          radius: 24,
+          blur: 12,
+          showShadow: false,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -3310,14 +3350,10 @@ class _OnlinePlaylistRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF111216) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isDark ? const Color(0xFF252632) : const Color(0xFFE4E6EC),
-            ),
-          ),
+        child: OneUi9Glass(
+          radius: 24,
+          blur: 12,
+          showShadow: false,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -3400,7 +3436,7 @@ class _RemoteArtworkBox extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF8F5BFF), Color(0xFF2C184E)],
+          colors: [OneUi9.accentSoft, OneUi9.violet, OneUi9.accent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -3408,6 +3444,22 @@ class _RemoteArtworkBox extends StatelessWidget {
       child: const Center(
         child: Icon(Icons.music_note_rounded, color: Colors.white, size: 30),
       ),
+    );
+  }
+}
+
+class _OneUiDetailHeader extends StatelessWidget {
+  const _OneUiDetailHeader({required this.title, this.actions = const []});
+
+  final String title;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return OneUi9PageHeader(
+      title: title,
+      onBack: () => Navigator.pop(context),
+      actions: actions,
     );
   }
 }
@@ -3438,12 +3490,7 @@ class OnlineAlbumScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Row(
-                    children: [
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios_new_rounded)),
-                      Expanded(child: Text(page.album.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800))),
-                    ],
-                  ),
+                  child: _OneUiDetailHeader(title: page.album.title),
                 ),
                 Expanded(
                   child: ListView(
@@ -3516,12 +3563,7 @@ class OnlineArtistScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Row(
-                    children: [
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios_new_rounded)),
-                      Expanded(child: Text(page.artist.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800))),
-                    ],
-                  ),
+                  child: _OneUiDetailHeader(title: page.artist.name),
                 ),
                 Expanded(
                   child: ListView(
@@ -3667,19 +3709,7 @@ class OnlineArtistAllSongsScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Row(
-                    children: [
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios_new_rounded)),
-                      Expanded(
-                        child: Text(
-                          '${page.artist.name} • Músicas',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: _OneUiDetailHeader(title: '${page.artist.name} • Músicas'),
                 ),
                 Expanded(
                   child: tracks.isEmpty
@@ -3737,19 +3767,7 @@ class OnlineArtistAllAlbumsScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Row(
-                    children: [
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios_new_rounded)),
-                      Expanded(
-                        child: Text(
-                          '${page.artist.name} • Álbuns',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: _OneUiDetailHeader(title: '${page.artist.name} • Álbuns'),
                 ),
                 Expanded(
                   child: albums.isEmpty
@@ -3813,12 +3831,7 @@ class OnlinePlaylistScreen extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Row(
-                    children: [
-                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios_new_rounded)),
-                      Expanded(child: Text(page.playlist.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800))),
-                    ],
-                  ),
+                  child: _OneUiDetailHeader(title: page.playlist.title),
                 ),
                 Expanded(
                   child: ListView(
@@ -3891,14 +3904,10 @@ class _UserPlaylistRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF111216) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF252632) : const Color(0xFFE4E6EC),
-            ),
-          ),
+        child: OneUi9Glass(
+          radius: 24,
+          blur: 12,
+          showShadow: false,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -3911,7 +3920,7 @@ class _UserPlaylistRow extends StatelessWidget {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(18),
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF8F5BFF), Color(0xFF2C184E)],
+                              colors: [OneUi9.accentSoft, OneUi9.violet, OneUi9.accent],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -3994,23 +4003,13 @@ class UserPlaylistScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                      ),
-                      Expanded(
-                        child: Text(
-                          playlist.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      IconButton(
+                  _OneUiDetailHeader(
+                    title: playlist.name,
+                    actions: [
+                      OneUi9IconButton(
                         onPressed: () => _showRenamePlaylistDialog(context, playlist),
-                        icon: const Icon(Icons.edit_rounded),
+                        icon: Icons.edit_rounded,
+                        tooltip: 'Renomear playlist',
                       ),
                     ],
                   ),
@@ -4111,25 +4110,7 @@ class ArtistDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          artistName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _OneUiDetailHeader(title: artistName),
                   const SizedBox(height: 16),
                   if (coverTrack != null)
                     Row(
@@ -4226,25 +4207,7 @@ class AlbumDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          coverTrack.album,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _OneUiDetailHeader(title: coverTrack.album),
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -4377,17 +4340,14 @@ class _ArtworkCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final radius = BorderRadius.circular(albumMode ? 26 : 22);
-    return ClipRRect(
-      borderRadius: radius,
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF151821)
-                : Colors.white,
-          ),
+    return AspectRatio(
+      aspectRatio: 1,
+      child: OneUi9Glass(
+        radius: albumMode ? 27 : 23,
+        blur: 10,
+        showShadow: false,
+        child: Padding(
+          padding: const EdgeInsets.all(2),
           child: LazyArtwork(
             track: track,
             borderRadius: radius,
@@ -4407,13 +4367,6 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppStrings.of(context);
-    return Center(
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.titleLarge,
-      ),
-    );
+    return OneUi9EmptyState(message: message);
   }
 }
