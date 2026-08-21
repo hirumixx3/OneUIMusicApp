@@ -105,3 +105,33 @@ class OnlineSearchResult {
 
   bool get isEmpty => songs.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty;
 }
+
+class OnlineHomeFeed {
+  const OnlineHomeFeed({
+    required this.catalog,
+    required this.quickPicks,
+    required this.listenAgain,
+    required this.accountHistory,
+    required this.likedSongs,
+    required this.librarySongs,
+    required this.newReleaseSongs,
+    required this.newReleaseAlbums,
+    required this.libraryAlbums,
+    required this.libraryArtists,
+    required this.libraryPlaylists,
+    required this.authenticated,
+  });
+
+  final OnlineSearchResult catalog;
+  final List<AudioTrack> quickPicks;
+  final List<AudioTrack> listenAgain;
+  final List<AudioTrack> accountHistory;
+  final List<AudioTrack> likedSongs;
+  final List<AudioTrack> librarySongs;
+  final List<AudioTrack> newReleaseSongs;
+  final List<OnlineAlbum> newReleaseAlbums;
+  final List<OnlineAlbum> libraryAlbums;
+  final List<OnlineArtist> libraryArtists;
+  final List<OnlinePlaylist> libraryPlaylists;
+  final bool authenticated;
+}

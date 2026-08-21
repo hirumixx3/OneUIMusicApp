@@ -92,6 +92,12 @@ class MusicPlayerProvider extends ChangeNotifier {
   static const _scrollKeyPrefix = 'scroll_offset_';
   static const _onlineSearchHistoryKey = 'online_search_history';
   static const _onlineRecentTracksKey = 'online_recent_tracks';
+  static const _onlineAccountHistoryKey = 'online_account_history_tracks';
+  static const _onlineAccountLikedKey = 'online_account_liked_tracks';
+  static const _onlineSearchAffinityKey = 'online_search_affinity_v1';
+  static const _onlineArtistAffinityKey = 'online_artist_affinity_v1';
+  static const _onlineAlbumAffinityKey = 'online_album_affinity_v1';
+  static const _onlineTrackAffinityKey = 'online_track_affinity_v1';
   static const _playHistoryKey = 'play_history_tracks';
   static const _downloadedTracksKey = 'downloaded_tracks';
   static const _userPlaylistsKey = 'user_playlists';
@@ -110,6 +116,12 @@ class MusicPlayerProvider extends ChangeNotifier {
   final Map<String, AudioTrack> _onlineFavoriteTracks = <String, AudioTrack>{};
   final List<String> _onlineSearchHistory = <String>[];
   final List<AudioTrack> _onlineRecentTracks = <AudioTrack>[];
+  final List<AudioTrack> _onlineAccountHistory = <AudioTrack>[];
+  final List<AudioTrack> _onlineAccountLikedSongs = <AudioTrack>[];
+  final Map<String, int> _onlineSearchAffinity = <String, int>{};
+  final Map<String, int> _onlineArtistAffinity = <String, int>{};
+  final Map<String, int> _onlineAlbumAffinity = <String, int>{};
+  final Map<String, int> _onlineTrackAffinity = <String, int>{};
   final List<AudioTrack> _playHistory = <AudioTrack>[];
   final List<UserPlaylist> _userPlaylists = <UserPlaylist>[];
   final List<AudioTrack> _downloadedTracks = <AudioTrack>[];
@@ -126,6 +138,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   final Map<String, String> _resolvedPlayablePathCache = <String, String>{};
   final Map<String, String> _lyricsCache = <String, String>{};
   final Map<String, Future<String>> _lyricsFutureCache = <String, Future<String>>{};
+  final Map<String, DateTime> _lastAffinityPlayRecord = <String, DateTime>{};
 
   List<AudioTrack> _tracks = <AudioTrack>[];
 
@@ -141,6 +154,15 @@ class MusicPlayerProvider extends ChangeNotifier {
   List<AudioTrack> _onlineRecommendedSongs = <AudioTrack>[];
   List<OnlineArtist> _onlineRecommendedArtists = <OnlineArtist>[];
   List<OnlinePlaylist> _onlineRecommendedPlaylists = <OnlinePlaylist>[];
+  List<AudioTrack> _onlineQuickPicks = <AudioTrack>[];
+  List<AudioTrack> _onlineListenAgain = <AudioTrack>[];
+  List<AudioTrack> _onlineAccountLibrarySongs = <AudioTrack>[];
+  List<AudioTrack> _onlineNewReleaseSongs = <AudioTrack>[];
+  List<OnlineAlbum> _onlineNewReleaseAlbums = <OnlineAlbum>[];
+  List<OnlineAlbum> _onlineAccountAlbums = <OnlineAlbum>[];
+  List<OnlineArtist> _onlineAccountArtists = <OnlineArtist>[];
+  List<OnlinePlaylist> _onlineAccountPlaylists = <OnlinePlaylist>[];
+  bool _onlineFeedAuthenticated = false;
   bool _isOnlineLoading = false;
   bool _isLoadingMoreOnlineSongs = false;
   String? _onlineSongsContinuation;
@@ -486,6 +508,24 @@ class MusicPlayerProvider extends ChangeNotifier {
     );
   }
 
+  OnlineHomeFeed _homeFeedFromNative(dynamic value) {
+    final map = _nativeMap(value);
+    return OnlineHomeFeed(
+      catalog: _searchResultFromNative(map['catalog']),
+      quickPicks: _tracksFromNative(map['quickPicks']),
+      listenAgain: _tracksFromNative(map['listenAgain']),
+      accountHistory: _tracksFromNative(map['accountHistory']),
+      likedSongs: _tracksFromNative(map['likedSongs']),
+      librarySongs: _tracksFromNative(map['librarySongs']),
+      newReleaseSongs: _tracksFromNative(map['newReleaseSongs']),
+      newReleaseAlbums: _albumsFromNative(map['newReleaseAlbums']),
+      libraryAlbums: _albumsFromNative(map['libraryAlbums']),
+      libraryArtists: _artistsFromNative(map['libraryArtists']),
+      libraryPlaylists: _playlistsFromNative(map['libraryPlaylists']),
+      authenticated: map['authenticated'] == true,
+    );
+  }
+
   OnlineAlbumPage _albumPageFromNative(dynamic value) {
     final map = _nativeMap(value);
     return OnlineAlbumPage(
@@ -684,6 +724,13 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   Future<OnlineSearchResult> _homeNative() async => _searchResultFromNative(await _invokeMetrolistMap('home'));
 
+  Future<OnlineHomeFeed> _personalizedHomeNative(List<String> seeds) async =>
+      _homeFeedFromNative(
+        await _invokeMetrolistMap('personalizedHome', <String, dynamic>{
+          'seeds': seeds,
+        }),
+      );
+
   Future<OnlineSearchResult> _searchNative(String query) async => _searchResultFromNative(
         await _invokeMetrolistMap('search', <String, dynamic>{'query': query}),
       );
@@ -718,6 +765,29 @@ class MusicPlayerProvider extends ChangeNotifier {
   Future<List<OnlinePlaylist>> _fetchPersonalizedPlaylistsNative(List<String> queries) async => _playlistsFromNative(
         await _invokeMetrolistList('fetchPersonalizedPlaylists', <String, dynamic>{'queries': queries}),
       );
+
+  Future<bool> _setAccountSongLikeNative(AudioTrack track, bool liked) async {
+    if (!_isLoggedIn || !track.isRemote) return false;
+    final videoId = (track.videoId ?? track.id).trim();
+    if (videoId.isEmpty) return false;
+    final result = await _metrolistChannel.invokeMethod<bool>(
+      'setSongLike',
+      <String, dynamic>{'videoId': videoId, 'liked': liked},
+    );
+    return result == true;
+  }
+
+  Future<void> _registerAccountPlaybackNative(AudioTrack track) async {
+    if (!_isLoggedIn || !track.isRemote) return;
+    final videoId = (track.videoId ?? track.id).trim();
+    if (videoId.isEmpty) return;
+    try {
+      await _metrolistChannel.invokeMethod<bool>(
+        'registerAccountPlayback',
+        <String, dynamic>{'videoId': videoId},
+      );
+    } catch (_) {}
+  }
 
   Future<OnlineAlbumPage> _albumNative(String browseId) async => _albumPageFromNative(
         await _invokeMetrolistMap('album', <String, dynamic>{'browseId': browseId}),
@@ -811,10 +881,11 @@ class MusicPlayerProvider extends ChangeNotifier {
     try {
       final result = await _metrolistChannel.invokeMapMethod<String, dynamic>('loginWithGoogle');
       if (result != null && (result['cookie'] as String?)?.isNotEmpty == true) {
-        _isLoggedIn    = true;
-        _accountName   = (result['name']  as String?) ?? '';
+        _isLoggedIn = true;
+        _accountName = (result['name'] as String?) ?? '';
         _accountEmail  = (result['email'] as String?) ?? '';
         _accountPhoto  = (result['photo'] as String?) ?? '';
+        await _clearAccountPersonalizationCache();
         notifyListeners();
         unawaited(searchOnline(forceQuery: '', refresh: true));
         return result;
@@ -829,6 +900,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     _isLoggedIn = false; _accountName = '';
     _accountEmail = '';
     _accountPhoto = '';
+    await _clearAccountPersonalizationCache();
     notifyListeners();
     unawaited(searchOnline(forceQuery: '', refresh: true));
   }
@@ -838,11 +910,20 @@ class MusicPlayerProvider extends ChangeNotifier {
     try {
       final result = await _metrolistChannel.invokeMapMethod<String, dynamic>('getGoogleAccount');
       if (result != null) {
-        _isLoggedIn   = true;
-        _accountName  = (result['name']  as String?) ?? '';
+        _isLoggedIn = true;
+        _accountName = (result['name'] as String?) ?? '';
         _accountEmail = (result['email'] as String?) ?? '';
         _accountPhoto = (result['photo'] as String?) ?? '';
-        notifyListeners();
+      } else {
+        _isLoggedIn = false;
+        _accountName = '';
+        _accountEmail = '';
+        _accountPhoto = '';
+        await _clearAccountPersonalizationCache();
+      }
+      notifyListeners();
+      if (_tab == LibraryTab.online && !_isOnlineLoading) {
+        unawaited(searchOnline(forceQuery: '', refresh: true));
       }
     } catch (_) {}
   }
@@ -918,17 +999,56 @@ class MusicPlayerProvider extends ChangeNotifier {
   List<OnlinePlaylist> get onlinePlaylists => List.unmodifiable(_onlinePlaylists);
   List<AudioTrack> get onlineRecommendedSongs => List.unmodifiable(_onlineRecommendedSongs);
   List<OnlineArtist> get onlineRecommendedArtists => List.unmodifiable(
-        _dedupeRecommendedArtists(<OnlineArtist>[..._onlineRecommendedArtists, ..._onlineArtists]),
+        _dedupeRecommendedArtists(<OnlineArtist>[
+          ..._onlineRecommendedArtists,
+          ..._onlineAccountArtists,
+          ..._onlineArtists,
+        ]),
       );
   List<OnlinePlaylist> get onlineRecommendedPlaylists => List.unmodifiable(
-        _dedupePlaylists(<OnlinePlaylist>[..._onlineRecommendedPlaylists, ..._onlinePlaylists]),
+        _dedupePlaylists(<OnlinePlaylist>[
+          ..._onlineAccountPlaylists,
+          ..._onlineRecommendedPlaylists,
+          ..._onlinePlaylists,
+        ]),
       );
+  List<AudioTrack> get onlineQuickPicks => List.unmodifiable(
+        _dedupeTracks(<AudioTrack>[
+          ..._onlineQuickPicks,
+          ..._onlineRecommendedSongs,
+          ..._onlineSongs,
+        ]),
+      );
+  List<AudioTrack> get onlineListenAgain => List.unmodifiable(
+        _dedupeTracks(<AudioTrack>[
+          ..._onlineListenAgain,
+          ..._onlineAccountHistory,
+          ..._onlineRecentTracks,
+        ]),
+      );
+  List<AudioTrack> get onlineAccountLikedSongs =>
+      List.unmodifiable(_dedupeTracks(_onlineAccountLikedSongs));
+  List<AudioTrack> get onlineAccountLibrarySongs =>
+      List.unmodifiable(_dedupeTracks(_onlineAccountLibrarySongs));
+  List<AudioTrack> get onlineNewReleaseSongs =>
+      List.unmodifiable(_dedupeTracks(_onlineNewReleaseSongs));
+  List<OnlineAlbum> get onlineNewReleaseAlbums =>
+      List.unmodifiable(_dedupeAlbums(_onlineNewReleaseAlbums));
+  List<OnlineAlbum> get onlineAccountAlbums =>
+      List.unmodifiable(_dedupeAlbums(_onlineAccountAlbums));
+  bool get onlineFeedAuthenticated => _onlineFeedAuthenticated;
   String get onlineActiveQuery => _lastOnlineQuery.trim().toLowerCase();
   List<AudioTrack> get onlineDisplaySongs {
     final active = onlineActiveQuery.isNotEmpty;
     final merged = active
         ? _onlineSongs
-        : _dedupeTracks(<AudioTrack>[..._onlineRecommendedSongs, ..._onlineSongs]);
+        : _dedupeTracks(<AudioTrack>[
+            ..._onlineQuickPicks,
+            ..._onlineRecommendedSongs,
+            ..._onlineAccountLibrarySongs,
+            ..._onlineNewReleaseSongs,
+            ..._onlineSongs,
+          ]);
     if (!active && merged.isEmpty) {
       // A home online não pode ficar eternamente em skeleton se o Innertube
       // demorar/ficar vazio. Estes itens são fallback visual/tocável e são
@@ -940,18 +1060,31 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   List<OnlineAlbum> get onlineDisplayAlbums {
     final active = onlineActiveQuery.isNotEmpty;
-    final base = _onlineAlbums.isNotEmpty ? _onlineAlbums : _albumsFromTracks(_onlineSongs, query: _lastOnlineQuery);
-    if (!active && base.isEmpty) {
+    final base = active
+        ? _onlineAlbums
+        : _dedupeAlbums(<OnlineAlbum>[
+            ..._onlineNewReleaseAlbums,
+            ..._onlineAccountAlbums,
+            ..._onlineAlbums,
+          ]);
+    final derivedBase = base.isNotEmpty
+        ? base
+        : _albumsFromTracks(_onlineSongs, query: _lastOnlineQuery);
+    if (!active && derivedBase.isEmpty) {
       return List.unmodifiable(_albumsFromTracks(onlineDisplaySongs, query: 'recomendações'));
     }
-    return List.unmodifiable(base);
+    return List.unmodifiable(derivedBase);
   }
 
   List<OnlineArtist> get onlineDisplayArtists {
     final active = onlineActiveQuery.isNotEmpty;
     final base = active
         ? _onlineArtists
-        : _dedupeRecommendedArtists(<OnlineArtist>[..._onlineRecommendedArtists, ..._onlineArtists]);
+        : _dedupeRecommendedArtists(<OnlineArtist>[
+            ..._onlineRecommendedArtists,
+            ..._onlineAccountArtists,
+            ..._onlineArtists,
+          ]);
     final derived = base.isNotEmpty ? base : _artistsFromTracks(active ? _onlineSongs : onlineDisplaySongs);
     return List.unmodifiable(_rankRecommendedArtists(derived));
   }
@@ -960,7 +1093,11 @@ class MusicPlayerProvider extends ChangeNotifier {
     final active = onlineActiveQuery.isNotEmpty;
     final base = active
         ? _onlinePlaylists
-        : _dedupePlaylists(<OnlinePlaylist>[..._onlineRecommendedPlaylists, ..._onlinePlaylists]);
+        : _dedupePlaylists(<OnlinePlaylist>[
+            ..._onlineAccountPlaylists,
+            ..._onlineRecommendedPlaylists,
+            ..._onlinePlaylists,
+          ]);
     final derived = base.isNotEmpty ? base : _playlistsFromTracks(active ? _onlineSongs : onlineDisplaySongs, query: _lastOnlineQuery);
     return List.unmodifiable(_dedupePlaylists(derived));
   }
@@ -973,9 +1110,17 @@ class MusicPlayerProvider extends ChangeNotifier {
 
 
   bool _hasOnlineHomeContent() {
-    final hasSongs = _onlineSongs.isNotEmpty || _onlineRecommendedSongs.isNotEmpty;
-    final hasArtists = _onlineArtists.isNotEmpty || _onlineRecommendedArtists.isNotEmpty;
-    final hasPlaylists = _onlinePlaylists.isNotEmpty || _onlineRecommendedPlaylists.isNotEmpty;
+    final hasSongs = _onlineSongs.isNotEmpty ||
+        _onlineRecommendedSongs.isNotEmpty ||
+        _onlineQuickPicks.isNotEmpty ||
+        _onlineListenAgain.isNotEmpty ||
+        _onlineAccountLibrarySongs.isNotEmpty;
+    final hasArtists = _onlineArtists.isNotEmpty ||
+        _onlineRecommendedArtists.isNotEmpty ||
+        _onlineAccountArtists.isNotEmpty;
+    final hasPlaylists = _onlinePlaylists.isNotEmpty ||
+        _onlineRecommendedPlaylists.isNotEmpty ||
+        _onlineAccountPlaylists.isNotEmpty;
     // A home do Innertube pode chegar por partes. Basta qualquer bloco
     // carregado para a tela Metrolist não voltar ao estado vazio.
     return hasSongs || hasArtists || hasPlaylists;
@@ -1083,6 +1228,24 @@ class MusicPlayerProvider extends ChangeNotifier {
     _onlineRecentTracks
       ..clear()
       ..addAll(_loadSavedOnlineRecentTracks());
+    _onlineAccountHistory
+      ..clear()
+      ..addAll(_loadSavedRemoteTracks(_onlineAccountHistoryKey, limit: 120));
+    _onlineAccountLikedSongs
+      ..clear()
+      ..addAll(_loadSavedRemoteTracks(_onlineAccountLikedKey, limit: 120));
+    _onlineSearchAffinity
+      ..clear()
+      ..addAll(_loadAffinityMap(_onlineSearchAffinityKey));
+    _onlineArtistAffinity
+      ..clear()
+      ..addAll(_loadAffinityMap(_onlineArtistAffinityKey));
+    _onlineAlbumAffinity
+      ..clear()
+      ..addAll(_loadAffinityMap(_onlineAlbumAffinityKey));
+    _onlineTrackAffinity
+      ..clear()
+      ..addAll(_loadAffinityMap(_onlineTrackAffinityKey));
     _playHistory
       ..clear()
       ..addAll(_loadSavedPlayHistory());
@@ -1118,6 +1281,8 @@ class MusicPlayerProvider extends ChangeNotifier {
     _onlineRecommendedSongs = _rankOnlineRecommendedSongs(<AudioTrack>[
       ..._onlineFavoriteTracks.values,
       ..._onlineRecentTracks,
+      ..._onlineAccountHistory,
+      ..._onlineAccountLikedSongs,
       ..._playHistory,
     ]).take(80).toList(growable: false);
     for (final tab in LibraryTab.values) {
@@ -1187,6 +1352,112 @@ class MusicPlayerProvider extends ChangeNotifier {
       } catch (_) {}
     }
     return _dedupeTracks(list).take(24).toList(growable: false);
+  }
+
+  List<AudioTrack> _loadSavedRemoteTracks(String key, {required int limit}) {
+    final rawList = _prefs?.getStringList(key) ?? const <String>[];
+    final tracks = <AudioTrack>[];
+    for (final raw in rawList) {
+      try {
+        final decoded = jsonDecode(raw);
+        final track = decoded is Map<String, dynamic>
+            ? AudioTrack.fromJson(decoded)
+            : decoded is Map
+                ? AudioTrack.fromJson(decoded.cast<String, dynamic>())
+                : null;
+        if (track != null && track.isRemote) {
+          tracks.add(_sanitizeRemoteTrack(track));
+        }
+      } catch (_) {}
+    }
+    return _dedupeTracks(tracks).take(limit).toList(growable: false);
+  }
+
+  Map<String, int> _loadAffinityMap(String key) {
+    final raw = _prefs?.getString(key);
+    if (raw == null || raw.isEmpty) return <String, int>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return <String, int>{};
+      return decoded.map<String, int>((dynamic mapKey, dynamic value) {
+        final score = value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+        return MapEntry('$mapKey', score.clamp(0, 10000).toInt());
+      })..removeWhere((mapKey, value) => mapKey.trim().isEmpty || value <= 0);
+    } catch (_) {
+      return <String, int>{};
+    }
+  }
+
+  String _affinityKey(String value) => _normalizeRecommendationText(value);
+
+  void _incrementAffinity(
+    Map<String, int> target,
+    String raw, {
+    int amount = 1,
+    int maxEntries = 160,
+  }) {
+    final key = _affinityKey(raw);
+    if (key.length < 2) return;
+    target.update(
+      key,
+      (current) => (current + amount).clamp(0, 10000).toInt(),
+      ifAbsent: () => amount.clamp(1, 10000).toInt(),
+    );
+    if (target.length <= maxEntries) return;
+    final keep = target.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    target
+      ..clear()
+      ..addEntries(keep.take(maxEntries));
+  }
+
+  Future<void> _persistAffinityProfile() async {
+    await Future.wait(<Future<bool>>[
+      _prefs?.setString(_onlineSearchAffinityKey, jsonEncode(_onlineSearchAffinity)) ?? Future<bool>.value(false),
+      _prefs?.setString(_onlineArtistAffinityKey, jsonEncode(_onlineArtistAffinity)) ?? Future<bool>.value(false),
+      _prefs?.setString(_onlineAlbumAffinityKey, jsonEncode(_onlineAlbumAffinity)) ?? Future<bool>.value(false),
+      _prefs?.setString(_onlineTrackAffinityKey, jsonEncode(_onlineTrackAffinity)) ?? Future<bool>.value(false),
+    ]);
+  }
+
+  Future<void> _persistAccountPersonalizationCache() async {
+    final history = _onlineAccountHistory
+        .take(120)
+        .map((track) => jsonEncode(_sanitizeRemoteTrack(track).toJson()))
+        .toList(growable: false);
+    final liked = _onlineAccountLikedSongs
+        .take(120)
+        .map((track) => jsonEncode(_sanitizeRemoteTrack(track).toJson()))
+        .toList(growable: false);
+    await Future.wait(<Future<bool>>[
+      _prefs?.setStringList(_onlineAccountHistoryKey, history) ?? Future<bool>.value(false),
+      _prefs?.setStringList(_onlineAccountLikedKey, liked) ?? Future<bool>.value(false),
+    ]);
+  }
+
+  Future<void> _clearAccountPersonalizationCache() async {
+    _onlineAccountHistory.clear();
+    _onlineAccountLikedSongs.clear();
+    _onlineSongs = const <AudioTrack>[];
+    _onlineAlbums = const <OnlineAlbum>[];
+    _onlineArtists = const <OnlineArtist>[];
+    _onlinePlaylists = const <OnlinePlaylist>[];
+    _onlineQuickPicks = const <AudioTrack>[];
+    _onlineListenAgain = const <AudioTrack>[];
+    _onlineAccountLibrarySongs = const <AudioTrack>[];
+    _onlineNewReleaseSongs = const <AudioTrack>[];
+    _onlineNewReleaseAlbums = const <OnlineAlbum>[];
+    _onlineAccountAlbums = const <OnlineAlbum>[];
+    _onlineAccountArtists = const <OnlineArtist>[];
+    _onlineAccountPlaylists = const <OnlinePlaylist>[];
+    _onlineRecommendedSongs = const <AudioTrack>[];
+    _onlineRecommendedArtists = const <OnlineArtist>[];
+    _onlineRecommendedPlaylists = const <OnlinePlaylist>[];
+    _onlineFeedAuthenticated = false;
+    await Future.wait(<Future<bool>>[
+      _prefs?.remove(_onlineAccountHistoryKey) ?? Future<bool>.value(false),
+      _prefs?.remove(_onlineAccountLikedKey) ?? Future<bool>.value(false),
+    ]);
   }
 
   List<AudioTrack> _loadSavedPlayHistory() {
@@ -1312,7 +1583,10 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _persistOnlineSearchHistory() async {
-    await _prefs?.setStringList(_onlineSearchHistoryKey, _onlineSearchHistory.take(12).toList(growable: false));
+    await _prefs?.setStringList(
+      _onlineSearchHistoryKey,
+      _onlineSearchHistory.take(30).toList(growable: false),
+    );
   }
 
   Future<void> _persistOnlineRecentTracks() async {
@@ -1355,19 +1629,25 @@ class MusicPlayerProvider extends ChangeNotifier {
   Future<void> rememberOnlineSearch(String query) async {
     final normalized = query.trim();
     if (normalized.isEmpty) return;
+    _incrementAffinity(_onlineSearchAffinity, normalized, amount: 3);
     _onlineSearchHistory.removeWhere((item) => item.toLowerCase() == normalized.toLowerCase());
     _onlineSearchHistory.insert(0, normalized);
-    if (_onlineSearchHistory.length > 12) {
-      _onlineSearchHistory.removeRange(12, _onlineSearchHistory.length);
+    if (_onlineSearchHistory.length > 30) {
+      _onlineSearchHistory.removeRange(30, _onlineSearchHistory.length);
     }
-    await _persistOnlineSearchHistory();
+    await Future.wait<void>(<Future<void>>[
+      _persistOnlineSearchHistory(),
+      _persistAffinityProfile(),
+    ]);
     notifyListeners();
     unawaited(_refreshOnlineRecommendations(seedSongs: _onlineSongs));
   }
 
   Future<void> clearOnlineSearchHistory() async {
     _onlineSearchHistory.clear();
+    _onlineSearchAffinity.clear();
     await _persistOnlineSearchHistory();
+    await _persistAffinityProfile();
     await _refreshOnlineRecommendations(seedSongs: _onlineSongs);
     notifyListeners();
   }
@@ -1451,7 +1731,28 @@ class MusicPlayerProvider extends ChangeNotifier {
     if (_playHistory.length > 60) {
       _playHistory.removeRange(60, _playHistory.length);
     }
-    await _persistPlayHistory();
+    final now = DateTime.now();
+    final affinityKey = safeTrack.libraryKey;
+    final previousRecord = _lastAffinityPlayRecord[affinityKey];
+    final shouldCountAffinity = previousRecord == null ||
+        now.difference(previousRecord) >= const Duration(minutes: 10);
+    if (shouldCountAffinity) {
+      _lastAffinityPlayRecord[affinityKey] = now;
+      _incrementAffinity(_onlineArtistAffinity, safeTrack.artist, amount: safeTrack.isRemote ? 4 : 2);
+      _incrementAffinity(_onlineAlbumAffinity, safeTrack.album, amount: safeTrack.isRemote ? 3 : 1);
+      _incrementAffinity(
+        _onlineTrackAffinity,
+        '${safeTrack.artist} ${safeTrack.title}',
+        amount: safeTrack.isRemote ? 5 : 2,
+      );
+      if (safeTrack.isRemote && _isLoggedIn) {
+        unawaited(_registerAccountPlaybackNative(safeTrack));
+      }
+    }
+    await Future.wait<void>(<Future<void>>[
+      _persistPlayHistory(),
+      if (shouldCountAffinity) _persistAffinityProfile(),
+    ]);
     if (_tab == LibraryTab.online && _lastOnlineQuery.isEmpty) {
       unawaited(_refreshOnlineRecommendations(seedSongs: _onlineSongs.isNotEmpty ? _onlineSongs : _onlineRecommendedSongs));
     }
@@ -1459,7 +1760,17 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   Future<void> clearPlaybackHistory() async {
     _playHistory.clear();
-    await _persistPlayHistory();
+    _onlineArtistAffinity.clear();
+    _onlineAlbumAffinity.clear();
+    _onlineTrackAffinity.clear();
+    _lastAffinityPlayRecord.clear();
+    await Future.wait<void>(<Future<void>>[
+      _persistPlayHistory(),
+      _persistAffinityProfile(),
+    ]);
+    if (_tab == LibraryTab.online && _lastOnlineQuery.isEmpty) {
+      unawaited(searchOnline(forceQuery: '', refresh: true));
+    }
     notifyListeners();
   }
 
@@ -2134,9 +2445,14 @@ class MusicPlayerProvider extends ChangeNotifier {
     final weights = <String, int>{};
 
     void addArtist(String raw, int value) {
-      final normalized = raw.trim().toLowerCase();
-      if (normalized.isEmpty || normalized == 'desconhecido') return;
-      weights.update(normalized, (current) => current + value, ifAbsent: () => value);
+      final candidates = LinkedHashSet<String>()
+        ..add(raw)
+        ..addAll(raw.split(RegExp(r',|&|;|\bfeat\.?\b|\bft\.?\b', caseSensitive: false)));
+      for (final candidate in candidates) {
+        final normalized = _normalizeRecommendationText(candidate);
+        if (normalized.isEmpty || normalized == 'desconhecido') continue;
+        weights.update(normalized, (current) => current + value, ifAbsent: () => value);
+      }
     }
 
     for (final track in _localFavoriteTracks()) {
@@ -2145,8 +2461,20 @@ class MusicPlayerProvider extends ChangeNotifier {
     for (final track in _onlineFavoriteTracks.values) {
       addArtist(track.artist, 18);
     }
+    for (final track in _onlineAccountLikedSongs.take(80)) {
+      addArtist(track.artist, 16);
+    }
+    for (final track in _onlineAccountHistory.take(80)) {
+      addArtist(track.artist, 5);
+    }
+    for (final track in _onlineAccountLibrarySongs.take(80)) {
+      addArtist(track.artist, 7);
+    }
     for (final track in _playHistory.take(36)) {
       addArtist(track.artist, 8);
+    }
+    for (final entry in _onlineArtistAffinity.entries) {
+      addArtist(entry.key, min(entry.value * 6, 240));
     }
     return weights;
   }
@@ -2155,12 +2483,19 @@ class MusicPlayerProvider extends ChangeNotifier {
     final weights = <String, int>{};
 
     void addGenre(String raw, int value) {
-      final normalized = raw.trim().toLowerCase();
+      final normalized = _normalizeRecommendationText(raw);
       if (normalized.isEmpty) return;
       weights.update(normalized, (current) => current + value, ifAbsent: () => value);
     }
 
-    for (final track in <AudioTrack>[..._localFavoriteTracks(), ..._onlineFavoriteTracks.values, ..._playHistory.take(30)]) {
+    for (final track in <AudioTrack>[
+      ..._localFavoriteTracks(),
+      ..._onlineFavoriteTracks.values,
+      ..._onlineAccountLikedSongs,
+      ..._onlineAccountHistory.take(40),
+      ..._onlineAccountLibrarySongs.take(40),
+      ..._playHistory.take(30),
+    ]) {
       if ((track.genre ?? '').trim().isNotEmpty) {
         addGenre(track.genre!, track.isRemote ? 8 : 6);
       }
@@ -2296,13 +2631,20 @@ class MusicPlayerProvider extends ChangeNotifier {
 
     for (final artist in _topPreferredArtists(limit: 6)) {
       addTerm(artist);
+      addTerm('$artist mix');
     }
 
     for (final genre in _topPreferredGenres(limit: 4)) {
       addTerm(genre);
     }
 
-    for (final search in _onlineSearchHistory.take(6)) {
+    final weightedSearches = _onlineSearchAffinity.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (final search in weightedSearches.take(8)) {
+      addTerm(search.key);
+    }
+
+    for (final search in _onlineSearchHistory.take(8)) {
       addTerm(search);
     }
 
@@ -2312,15 +2654,24 @@ class MusicPlayerProvider extends ChangeNotifier {
       addTerm('músicas parecidas com ${current.title}');
     }
 
-    for (final track in <AudioTrack>[..._localFavoriteTracks(), ..._onlineFavoriteTracks.values, ..._playHistory.take(20)]) {
+    for (final track in <AudioTrack>[
+      ..._localFavoriteTracks(),
+      ..._onlineFavoriteTracks.values,
+      ..._onlineAccountLikedSongs.take(20),
+      ..._onlineAccountHistory.take(20),
+      ..._onlineAccountLibrarySongs.take(20),
+      ..._playHistory.take(20),
+    ]) {
       addTerm('${track.artist} ${track.title}');
       if (track.album.trim().isNotEmpty && track.album.trim().toLowerCase() != 'desconhecido') {
         addTerm('${track.artist} ${track.album}');
       }
     }
 
-    for (final fallback in const <String>[
-      'lançamentos brasil',
+    final year = DateTime.now().year;
+    for (final fallback in <String>[
+      'lançamentos $year brasil',
+      'novas músicas $year',
       'top músicas brasil',
       'músicas virais',
       'pop hits',
@@ -2338,36 +2689,51 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   int _onlineRecommendationScore(AudioTrack track) {
-    final haystack = '${track.title} ${track.artist} ${track.album} ${(track.genre ?? '')}'.toLowerCase();
+    final haystack = _normalizeRecommendationText(
+      '${track.title} ${track.artist} ${track.album} ${(track.genre ?? '')}',
+    );
     var score = 0;
 
     final artistWeights = _preferredArtistWeights();
     final genreWeights = _preferredGenreWeights();
-    score += artistWeights[track.artist.toLowerCase().trim()] ?? 0;
-    final genreKey = (track.genre ?? '').toLowerCase().trim();
+    final artistKey = _normalizeRecommendationText(track.artist);
+    final albumKey = _normalizeRecommendationText(track.album);
+    final trackKey = _normalizeRecommendationText('${track.artist} ${track.title}');
+    score += artistWeights[artistKey] ?? 0;
+    score += min((_onlineArtistAffinity[artistKey] ?? 0) * 20, 500);
+    score += min((_onlineAlbumAffinity[albumKey] ?? 0) * 12, 300);
+    score += min((_onlineTrackAffinity[trackKey] ?? 0) * 8, 200);
+    final genreKey = _normalizeRecommendationText(track.genre ?? '');
     if (genreKey.isNotEmpty) {
       score += genreWeights[genreKey] ?? 0;
     }
 
-    for (final search in _onlineSearchHistory.take(6)) {
-      final normalized = search.toLowerCase().trim();
+    for (final search in _onlineSearchAffinity.entries) {
+      final normalized = search.key;
       if (normalized.isEmpty) continue;
       if (haystack.contains(normalized)) {
-        score += 120;
+        score += min(80 + search.value * 20, 360);
       }
       for (final token in normalized.split(RegExp(r'\s+'))) {
         if (token.length < 2) continue;
-        if (haystack.contains(token)) score += 18;
+        if (haystack.contains(token)) score += min(10 + search.value * 4, 70);
       }
     }
 
-    for (final fav in <AudioTrack>[..._localFavoriteTracks(), ..._onlineFavoriteTracks.values]) {
+    for (final fav in <AudioTrack>[
+      ..._localFavoriteTracks(),
+      ..._onlineFavoriteTracks.values,
+      ..._onlineAccountLikedSongs,
+    ]) {
       if (fav.artist.isNotEmpty && fav.artist.toLowerCase() == track.artist.toLowerCase()) score += 110;
       if (fav.album.isNotEmpty && fav.album.toLowerCase() == track.album.toLowerCase()) score += 56;
       if (fav.title.isNotEmpty && fav.title.toLowerCase() == track.title.toLowerCase()) score += 36;
     }
 
-    for (final played in _playHistory.take(30)) {
+    for (final played in <AudioTrack>[
+      ..._playHistory.take(30),
+      ..._onlineAccountHistory.take(50),
+    ]) {
       if (played.artist.isNotEmpty && played.artist.toLowerCase() == track.artist.toLowerCase()) score += 42;
       if (played.album.isNotEmpty && played.album.toLowerCase() == track.album.toLowerCase()) score += 20;
       if (played.title.isNotEmpty && played.title.toLowerCase() == track.title.toLowerCase()) score += 10;
@@ -2415,7 +2781,14 @@ class MusicPlayerProvider extends ChangeNotifier {
     final previousRecommendedArtists = List<OnlineArtist>.from(_onlineRecommendedArtists);
     final previousRecommendedPlaylists = List<OnlinePlaylist>.from(_onlineRecommendedPlaylists);
 
-    final base = <AudioTrack>[...?seedSongs];
+    final base = <AudioTrack>[
+      ...?seedSongs,
+      ..._onlineAccountLikedSongs,
+      ..._onlineAccountHistory,
+      ..._onlineAccountLibrarySongs,
+      ..._onlineRecentTracks,
+      ..._onlineFavoriteTracks.values,
+    ];
     final terms = _collectOnlineRecommendationQueries();
 
     // Fetch songs in parallel instead of sequentially for speed
@@ -2500,6 +2873,18 @@ class MusicPlayerProvider extends ChangeNotifier {
     final previousAlbums = List<OnlineAlbum>.from(_onlineAlbums);
     final previousArtists = List<OnlineArtist>.from(_onlineArtists);
     final previousPlaylists = List<OnlinePlaylist>.from(_onlinePlaylists);
+    final previousQuickPicks = List<AudioTrack>.from(_onlineQuickPicks);
+    final previousListenAgain = List<AudioTrack>.from(_onlineListenAgain);
+    final previousAccountLibrarySongs =
+        List<AudioTrack>.from(_onlineAccountLibrarySongs);
+    final previousAccountHistory = List<AudioTrack>.from(_onlineAccountHistory);
+    final previousAccountLiked = List<AudioTrack>.from(_onlineAccountLikedSongs);
+    final previousNewReleaseSongs = List<AudioTrack>.from(_onlineNewReleaseSongs);
+    final previousNewReleaseAlbums = List<OnlineAlbum>.from(_onlineNewReleaseAlbums);
+    final previousAccountAlbums = List<OnlineAlbum>.from(_onlineAccountAlbums);
+    final previousAccountArtists = List<OnlineArtist>.from(_onlineAccountArtists);
+    final previousAccountPlaylists = List<OnlinePlaylist>.from(_onlineAccountPlaylists);
+    final previousFeedAuthenticated = _onlineFeedAuthenticated;
     _isOnlineLoading = true;
     _onlineError = null;
     if (rawQuery.isEmpty) {
@@ -2600,19 +2985,79 @@ class MusicPlayerProvider extends ChangeNotifier {
     }
 
     try {
-      final result = await _homeNative()
-          .timeout(const Duration(seconds: 6));
+      OnlineHomeFeed feed;
+      try {
+        feed = await _personalizedHomeNative(
+          _collectOnlineRecommendationQueries(),
+        ).timeout(const Duration(seconds: 11));
+      } catch (_) {
+        final legacy = await _homeNative().timeout(const Duration(seconds: 6));
+        feed = OnlineHomeFeed(
+          catalog: legacy,
+          quickPicks: legacy.songs,
+          listenAgain: const <AudioTrack>[],
+          accountHistory: const <AudioTrack>[],
+          likedSongs: const <AudioTrack>[],
+          librarySongs: const <AudioTrack>[],
+          newReleaseSongs: const <AudioTrack>[],
+          newReleaseAlbums: legacy.albums,
+          libraryAlbums: const <OnlineAlbum>[],
+          libraryArtists: const <OnlineArtist>[],
+          libraryPlaylists: const <OnlinePlaylist>[],
+          authenticated: false,
+        );
+      }
       if (requestId != _onlineSearchRequestSerial) {
         return;
       }
+      final result = feed.catalog;
       _lastOnlineQuery = rawQuery;
       if (rawQuery.isNotEmpty) {
         unawaited(rememberOnlineSearch(rawQuery));
       }
-      var mergedSongs = result.songs;
-      var mergedAlbums = result.albums;
-      var mergedArtists = result.artists;
-      var mergedPlaylists = result.playlists;
+      _onlineQuickPicks = _dedupeTracks(feed.quickPicks).take(60).toList(growable: false);
+      _onlineListenAgain = _dedupeTracks(<AudioTrack>[
+        ...feed.listenAgain,
+        ...feed.accountHistory,
+        ..._onlineRecentTracks,
+      ]).take(120).toList(growable: false);
+      _onlineAccountHistory
+        ..clear()
+        ..addAll(_dedupeTracks(feed.accountHistory).take(120));
+      _onlineAccountLikedSongs
+        ..clear()
+        ..addAll(_dedupeTracks(feed.likedSongs).take(120));
+      _onlineAccountLibrarySongs =
+          _dedupeTracks(feed.librarySongs).take(120).toList(growable: false);
+      _onlineNewReleaseSongs = _dedupeTracks(feed.newReleaseSongs).take(80).toList(growable: false);
+      _onlineNewReleaseAlbums = _dedupeAlbums(feed.newReleaseAlbums).take(60).toList(growable: false);
+      _onlineAccountAlbums = _dedupeAlbums(feed.libraryAlbums).take(80).toList(growable: false);
+      _onlineAccountArtists = _dedupeRecommendedArtists(feed.libraryArtists).take(80).toList(growable: false);
+      _onlineAccountPlaylists = _dedupePlaylists(feed.libraryPlaylists).take(80).toList(growable: false);
+      _onlineFeedAuthenticated = feed.authenticated;
+      if (feed.authenticated) {
+        unawaited(_persistAccountPersonalizationCache());
+      }
+
+      var mergedSongs = _dedupeTracks(<AudioTrack>[
+        ...result.songs,
+        ...feed.quickPicks,
+        ...feed.newReleaseSongs,
+        ...feed.librarySongs,
+      ]);
+      var mergedAlbums = _dedupeAlbums(<OnlineAlbum>[
+        ...feed.newReleaseAlbums,
+        ...result.albums,
+        ...feed.libraryAlbums,
+      ]);
+      var mergedArtists = _dedupeRecommendedArtists(<OnlineArtist>[
+        ...result.artists,
+        ...feed.libraryArtists,
+      ]);
+      var mergedPlaylists = _dedupePlaylists(<OnlinePlaylist>[
+        ...feed.libraryPlaylists,
+        ...result.playlists,
+      ]);
 
       if (rawQuery.isEmpty && mergedSongs.isEmpty) {
         // Não bloqueia a home com várias buscas sequenciais. Mostra fallback
@@ -2662,13 +3107,30 @@ class MusicPlayerProvider extends ChangeNotifier {
       _onlineArtists = mergedArtists;
       _onlinePlaylists = mergedPlaylists;
       if (rawQuery.isEmpty) {
-        _onlineRecommendedSongs = _rankOnlineRecommendedSongs(mergedSongs).take(80).toList(growable: false);
+        _onlineRecommendedSongs = _rankOnlineRecommendedSongs(<AudioTrack>[
+          ...mergedSongs,
+          ...feed.likedSongs,
+          ...feed.accountHistory,
+          ..._onlineRecentTracks,
+        ]).take(100).toList(growable: false);
         _onlineRecommendedArtists = _rankRecommendedArtists(mergedArtists).take(24).toList(growable: false);
         // Seed recommended playlists from home content immediately, then refine
         if (mergedPlaylists.isNotEmpty) {
           _onlineRecommendedPlaylists = List<OnlinePlaylist>.from(mergedPlaylists);
         }
-        unawaited(_refreshOnlineRecommendations(seedSongs: mergedSongs));
+        if (mergedSongs.length < 24 ||
+            mergedArtists.isEmpty ||
+            mergedPlaylists.isEmpty) {
+          unawaited(
+            _refreshOnlineRecommendations(
+              seedSongs: <AudioTrack>[
+                ...mergedSongs,
+                ...feed.likedSongs,
+                ...feed.accountHistory,
+              ],
+            ),
+          );
+        }
       } else {
         _onlineRecommendedArtists = _rankRecommendedArtists(mergedArtists).take(24).toList(growable: false);
         _onlineRecommendedPlaylists = _dedupePlaylists(mergedPlaylists).take(40).toList(growable: false);
@@ -2737,6 +3199,21 @@ class MusicPlayerProvider extends ChangeNotifier {
       _onlineAlbums = previousAlbums;
       _onlineArtists = previousArtists;
       _onlinePlaylists = previousPlaylists;
+      _onlineQuickPicks = previousQuickPicks;
+      _onlineListenAgain = previousListenAgain;
+      _onlineAccountLibrarySongs = previousAccountLibrarySongs;
+      _onlineAccountHistory
+        ..clear()
+        ..addAll(previousAccountHistory);
+      _onlineAccountLikedSongs
+        ..clear()
+        ..addAll(previousAccountLiked);
+      _onlineNewReleaseSongs = previousNewReleaseSongs;
+      _onlineNewReleaseAlbums = previousNewReleaseAlbums;
+      _onlineAccountAlbums = previousAccountAlbums;
+      _onlineAccountArtists = previousAccountArtists;
+      _onlineAccountPlaylists = previousAccountPlaylists;
+      _onlineFeedAuthenticated = previousFeedAuthenticated;
     } finally {
       if (requestId == _onlineSearchRequestSerial) {
         _isOnlineLoading = false;
@@ -3297,29 +3774,63 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   List<AudioTrack> get onlineHistoryTracks {
-    return _applySort(_dedupeTracks(_onlineRecentTracks));
+    return _dedupeTracks(<AudioTrack>[
+      ..._onlineRecentTracks,
+      ..._onlineAccountHistory,
+    ]);
   }
 
   List<AudioTrack> get onlineFavoriteTracks {
-    return _applySort(_dedupeTracks(_onlineFavoriteTracks.values));
+    return _dedupeTracks(<AudioTrack>[
+      ..._onlineFavoriteTracks.values,
+      ..._onlineAccountLikedSongs,
+    ]);
+  }
+
+  bool _isLikedInGoogleAccount(AudioTrack track) {
+    final videoId = (track.videoId ?? track.id).trim().toLowerCase();
+    if (videoId.isEmpty) return false;
+    return _onlineAccountLikedSongs.any(
+      (item) => (item.videoId ?? item.id).trim().toLowerCase() == videoId,
+    );
   }
 
   bool isFavorite(AudioTrack track) {
     if (track.isRemote) {
-      return _onlineFavoriteIds.contains(track.id);
+      return _onlineFavoriteIds.contains(track.id) || _isLikedInGoogleAccount(track);
     }
     return _favoriteIds.contains(track.id);
   }
 
   Future<void> toggleFavorite(AudioTrack track) async {
     if (track.isRemote) {
-      if (_onlineFavoriteIds.contains(track.id)) {
+      final shouldLike = !isFavorite(track);
+      if (!shouldLike) {
         _onlineFavoriteIds.remove(track.id);
         await _forgetOnlineTrack(track.id);
+        _onlineAccountLikedSongs.removeWhere(
+          (item) =>
+              (item.videoId ?? item.id).trim().toLowerCase() ==
+              (track.videoId ?? track.id).trim().toLowerCase(),
+        );
       } else {
         _onlineFavoriteIds.add(track.id);
         _onlineFavoriteTracks[track.id] = _sanitizeRemoteTrack(track);
         await _persistOnlineFavorites();
+        if (_isLoggedIn && !_isLikedInGoogleAccount(track)) {
+          _onlineAccountLikedSongs.insert(0, _sanitizeRemoteTrack(track));
+        }
+      }
+      if (_isLoggedIn) {
+        try {
+          await _setAccountSongLikeNative(track, shouldLike).timeout(
+            const Duration(seconds: 8),
+          );
+        } catch (_) {
+          // O favorito local continua funcionando mesmo se a conta estiver
+          // temporariamente offline. A próxima Home sincroniza o estado real.
+        }
+        await _persistAccountPersonalizationCache();
       }
       notifyListeners();
       if (_tab == LibraryTab.online && _lastOnlineQuery.isEmpty) {

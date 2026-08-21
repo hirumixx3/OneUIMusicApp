@@ -16,6 +16,7 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -68,6 +69,9 @@ object MetrolistNativePlayer {
     private const val CACHE_SAFETY_MS = 120_000L
     private const val CHANNEL_ID = "metrolist_native_playback"
     private const val NOTIFICATION_ID = 230101
+    private const val ARTWORK_MAX_EDGE = 1024
+    private const val ARTWORK_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
 
     const val ACTION_PLAY_PAUSE = "com.hirumisu.musicapp.action.PLAY_PAUSE"
     const val ACTION_NEXT = "com.hirumisu.musicapp.action.NEXT"
@@ -146,6 +150,27 @@ object MetrolistNativePlayer {
             override fun onSkipToPrevious() { skipToPrevious() }
             override fun onSeekTo(pos: Long) { seek(pos) }
             override fun onStop() { stop() }
+            override fun onCustomAction(action: String?, extras: Bundle?) {
+                val context = appContext ?: return
+                handleNotificationAction(context, action.orEmpty())
+            }
+            override fun onSetShuffleMode(shuffleMode: Int) {
+                onMainSync {
+                    player?.shuffleModeEnabled = shuffleMode != PlaybackStateCompat.SHUFFLE_MODE_NONE
+                    appContext?.let { updateNotification(it) }
+                }
+            }
+            override fun onSetRepeatMode(repeatMode: Int) {
+                onMainSync {
+                    player?.repeatMode = when (repeatMode) {
+                        PlaybackStateCompat.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ONE
+                        PlaybackStateCompat.REPEAT_MODE_ALL,
+                        PlaybackStateCompat.REPEAT_MODE_GROUP -> Player.REPEAT_MODE_ALL
+                        else -> Player.REPEAT_MODE_OFF
+                    }
+                    appContext?.let { updateNotification(it) }
+                }
+            }
         })
         session.isActive = true
         mediaSession = session
@@ -707,6 +732,79 @@ object MetrolistNativePlayer {
         return PendingIntent.getActivity(context, 99, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
+    private fun httpArtworkCandidates(raw: String): List<String> {
+        val candidates = linkedSetOf<String>()
+        val url = raw.trim()
+        if (url.isBlank()) return emptyList()
+        candidates += url
+        if (url.contains("/maxresdefault.jpg")) {
+            candidates += url.replace("/maxresdefault.jpg", "/hqdefault.jpg")
+            candidates += url.replace("/maxresdefault.jpg", "/sddefault.jpg")
+            candidates += url.replace("/maxresdefault.jpg", "/mqdefault.jpg")
+        }
+        if (Regex("=w\\d+-h\\d+(?:-[^?&]*)?").containsMatchIn(url)) {
+            candidates += url.replace(Regex("=w\\d+-h\\d+(?:-[^?&]*)?"), "=w1024-h1024-l90-rj")
+            candidates += url.replace(Regex("=w\\d+-h\\d+(?:-[^?&]*)?"), "=w544-h544-l90-rj")
+        }
+        return candidates.toList()
+    }
+
+    private fun decodeArtwork(bytes: ByteArray): Bitmap? {
+        if (bytes.isEmpty()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (bounds.outWidth / sample > ARTWORK_MAX_EDGE * 2 || bounds.outHeight / sample > ARTWORK_MAX_EDGE * 2) {
+            sample *= 2
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return scaleArtwork(BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options))
+    }
+
+    private fun decodeArtworkFile(path: String?): Bitmap? {
+        if (path.isNullOrBlank()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        var sample = 1
+        while (bounds.outWidth / sample > ARTWORK_MAX_EDGE * 2 || bounds.outHeight / sample > ARTWORK_MAX_EDGE * 2) {
+            sample *= 2
+        }
+        return scaleArtwork(BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample }))
+    }
+
+    private fun scaleArtwork(bitmap: Bitmap?): Bitmap? {
+        bitmap ?: return null
+        val largest = maxOf(bitmap.width, bitmap.height)
+        if (largest <= ARTWORK_MAX_EDGE) return bitmap
+        val scale = ARTWORK_MAX_EDGE.toFloat() / largest.toFloat()
+        val width = (bitmap.width * scale).toInt().coerceAtLeast(1)
+        val height = (bitmap.height * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(bitmap, width, height, true).also { scaled ->
+            if (scaled !== bitmap) runCatching { bitmap.recycle() }
+        }
+    }
+
+    private fun downloadArtwork(rawUrl: String): Bitmap? {
+        for (url in httpArtworkCandidates(rawUrl)) {
+            val bitmap = runCatching {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", ARTWORK_USER_AGENT)
+                    .header("Referer", "https://music.youtube.com/")
+                    .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                    .build()
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) null else response.body?.bytes()?.let(::decodeArtwork)
+                }
+            }.getOrNull()
+            if (bitmap != null) return bitmap
+        }
+        return null
+    }
+
     private fun maybeLoadArtworkAsync(context: Context, uri: Uri?) {
         val key = uri?.toString().orEmpty()
         if (key.isBlank() || key == currentArtworkKey) return
@@ -714,22 +812,19 @@ object MetrolistNativePlayer {
         artExecutor.execute {
             val bitmap = runCatching {
                 when (uri?.scheme?.lowercase(Locale.US)) {
-                    "http", "https" -> {
-                        val request = Request.Builder().url(key).header("User-Agent", "Metrolist/Flutter Music App").build()
-                        httpClient.newCall(request).execute().use { response ->
-                            if (!response.isSuccessful) null else response.body?.byteStream()?.use { stream -> BitmapFactory.decodeStream(stream) }
-                        }
-                    }
-                    "file" -> BitmapFactory.decodeFile(uri.path)
+                    "http", "https" -> downloadArtwork(key)
+                    "file" -> decodeArtworkFile(uri.path)
                     "content" -> context.contentResolver.openInputStream(uri).use { input ->
-                        if (input == null) null else BitmapFactory.decodeStream(input)
+                        if (input == null) null else decodeArtwork(input.readBytes())
                     }
                     else -> null
                 }
             }.getOrNull()
-            if (bitmap != null) {
+            if (bitmap != null && currentArtworkKey == key) {
                 currentArtworkBitmap = bitmap
                 mainHandler.post { updateNotification(context) }
+            } else if (bitmap != null) {
+                runCatching { bitmap.recycle() }
             }
         }
     }
@@ -751,24 +846,51 @@ object MetrolistNativePlayer {
         }
 
         val playing = p.isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING)
+        val repeatTitle = when (p.repeatMode) {
+            Player.REPEAT_MODE_ONE -> "Repetir faixa"
+            Player.REPEAT_MODE_ALL -> "Repetir fila"
+            else -> "Sem repetição"
+        }
+        val shuffleTitle = if (p.shuffleModeEnabled) "Aleatório ligado" else "Aleatório desligado"
+        val repeatModeCompat = when (p.repeatMode) {
+            Player.REPEAT_MODE_ONE -> PlaybackStateCompat.REPEAT_MODE_ONE
+            Player.REPEAT_MODE_ALL -> PlaybackStateCompat.REPEAT_MODE_ALL
+            else -> PlaybackStateCompat.REPEAT_MODE_NONE
+        }
+        val shuffleModeCompat = if (p.shuffleModeEnabled) {
+            PlaybackStateCompat.SHUFFLE_MODE_ALL
+        } else {
+            PlaybackStateCompat.SHUFFLE_MODE_NONE
+        }
         val session = ensureMediaSession(context).apply {
             val duration = p.duration.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
-            val metadata = MediaMetadataCompat.Builder()
+            val metadataBuilder = MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
                 .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, meta.albumTitle?.toString().orEmpty())
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                .apply { currentArtworkBitmap?.let { putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) } }
-                .build()
-            setMetadata(metadata)
+            artworkUri?.toString()?.takeIf { it.isNotBlank() }?.let { artUri ->
+                metadataBuilder
+                    .putString(MediaMetadataCompat.METADATA_KEY_ART_URI, artUri)
+                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artUri)
+                    .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artUri)
+            }
+            currentArtworkBitmap?.let { artwork ->
+                metadataBuilder
+                    .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, artwork)
+                    .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artwork)
+                    .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, artwork)
+            }
+            setMetadata(metadataBuilder.build())
+            setRepeatMode(repeatModeCompat)
+            setShuffleMode(shuffleModeCompat)
             val playbackState = when {
                 p.playbackState == Player.STATE_BUFFERING -> PlaybackStateCompat.STATE_BUFFERING
                 playing -> PlaybackStateCompat.STATE_PLAYING
                 p.playbackState == Player.STATE_ENDED -> PlaybackStateCompat.STATE_STOPPED
                 else -> PlaybackStateCompat.STATE_PAUSED
             }
-            setPlaybackState(
-                PlaybackStateCompat.Builder()
+            val playbackStateBuilder = PlaybackStateCompat.Builder()
                     .setActions(
                         PlaybackStateCompat.ACTION_PLAY or
                             PlaybackStateCompat.ACTION_PAUSE or
@@ -776,23 +898,34 @@ object MetrolistNativePlayer {
                             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
                             PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                             PlaybackStateCompat.ACTION_SEEK_TO or
+                            PlaybackStateCompat.ACTION_SET_REPEAT_MODE or
+                            PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
                             PlaybackStateCompat.ACTION_STOP,
                     )
                     .setState(playbackState, p.currentPosition.coerceAtLeast(0L), if (playing) 1f else 0f)
-                    .build(),
-            )
+                    .addCustomAction(ACTION_SHUFFLE, shuffleTitle, R.drawable.ic_shuffle)
+                    .addCustomAction(
+                        ACTION_REPEAT,
+                        repeatTitle,
+                        if (p.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat,
+                    )
+            setPlaybackState(playbackStateBuilder.build())
         }
         val playPauseAction = if (playing) {
             NotificationCompat.Action(android.R.drawable.ic_media_pause, "Pausar", actionIntent(context, ACTION_PLAY_PAUSE, 1))
         } else {
             NotificationCompat.Action(android.R.drawable.ic_media_play, "Tocar", actionIntent(context, ACTION_PLAY_PAUSE, 1))
         }
-        val repeatTitle = when (p.repeatMode) {
-            Player.REPEAT_MODE_ONE -> "Repetir faixa"
-            Player.REPEAT_MODE_ALL -> "Repetir fila"
-            else -> "Sem repetição"
-        }
-        val shuffleTitle = if (p.shuffleModeEnabled) "Aleatório ligado" else "Aleatório desligado"
+        val shuffleAction = NotificationCompat.Action(
+            R.drawable.ic_shuffle,
+            shuffleTitle,
+            actionIntent(context, ACTION_SHUFFLE, 5),
+        )
+        val repeatAction = NotificationCompat.Action(
+            if (p.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat,
+            repeatTitle,
+            actionIntent(context, ACTION_REPEAT, 4),
+        )
 
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
@@ -805,16 +938,19 @@ object MetrolistNativePlayer {
             .setOnlyAlertOnce(true)
             .setOngoing(playing)
             .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setColor(0xFF5B8CFF.toInt())
+            .setColorized(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(shuffleAction)
             .addAction(NotificationCompat.Action(android.R.drawable.ic_media_previous, "Anterior", actionIntent(context, ACTION_PREVIOUS, 2)))
             .addAction(playPauseAction)
             .addAction(NotificationCompat.Action(android.R.drawable.ic_media_next, "Próxima", actionIntent(context, ACTION_NEXT, 3)))
-            .addAction(NotificationCompat.Action(android.R.drawable.ic_menu_revert, repeatTitle, actionIntent(context, ACTION_REPEAT, 4)))
-            .addAction(NotificationCompat.Action(android.R.drawable.ic_menu_sort_by_size, shuffleTitle, actionIntent(context, ACTION_SHUFFLE, 5)))
+            .addAction(repeatAction)
             .setStyle(
                 MediaStyle()
                     .setMediaSession(session.sessionToken)
-                    .setShowActionsInCompactView(0, 1, 2),
+                    .setShowActionsInCompactView(1, 2, 3),
             )
             .build()
     }

@@ -9,6 +9,7 @@ import com.metrolist.innertube.models.PlaylistItem
 import com.metrolist.innertube.models.PodcastItem
 import com.metrolist.innertube.models.SongItem
 import com.metrolist.innertube.models.YTItem
+import com.metrolist.innertube.models.YouTubeClient
 import com.metrolist.innertube.models.filterVideoSongs
 import com.metrolist.music.utils.cipher.CipherDeobfuscator
 import kotlinx.coroutines.Dispatchers
@@ -84,6 +85,200 @@ object MetrolistOnlineBridge {
         seedDeferred.awaitAll().forEach { collected += it }
         searchResultMap(collected.dedupeItems())
     }
+
+    /**
+     * Builds the Online home from real YouTube Music sources instead of
+     * slicing one generic search result into several fake sections.
+     *
+     * When a Google cookie is present, FEmusic_home, history, liked songs and
+     * the account library all run with the authenticated Innertube session.
+     * Every source is isolated so one unavailable endpoint never empties the
+     * whole home screen.
+     */
+    fun personalizedHome(
+        context: Context,
+        recommendationSeeds: List<String>,
+    ): Map<String, Any?> = runBlocking(Dispatchers.IO) {
+        ensureInitialized(context)
+        val authenticated = !YouTube.cookie.isNullOrBlank()
+        YouTube.useLoginForBrowse = authenticated
+
+        supervisorScope {
+            val seeds = recommendationSeeds
+                .map { it.trim().replace(Regex("\\s+"), " ") }
+                .filter { it.length >= 2 }
+                .distinctBy { it.lowercase(Locale.ROOT) }
+                .take(if (authenticated) 3 else 5)
+                .ifEmpty {
+                    listOf(
+                        "lançamentos brasil",
+                        "músicas em alta brasil",
+                        "pop hits",
+                        "músicas virais",
+                    )
+                }
+
+            val homeDeferred = async {
+                withTimeoutOrNull(6_000L) {
+                    YouTube.home().getOrNull()
+                }
+            }
+            val historyDeferred = async {
+                if (!authenticated) return@async emptyList<SongItem>()
+                withTimeoutOrNull(6_000L) {
+                    YouTube.musicHistory().getOrNull()
+                        ?.sections
+                        .orEmpty()
+                        .flatMap { it.songs }
+                }.orEmpty()
+            }
+            val likedDeferred = async {
+                if (!authenticated) return@async emptyList<SongItem>()
+                withTimeoutOrNull(6_000L) {
+                    YouTube.playlist("LM").getOrNull()?.songs
+                }.orEmpty()
+            }
+            val libraryDeferred = async {
+                if (!authenticated) return@async emptyList<YTItem>()
+                val browseIds = listOf(
+                    "FEmusic_library_songs",
+                    "FEmusic_library_corpus_track_songs",
+                    "FEmusic_library_corpus_track_albums",
+                    "FEmusic_library_corpus_track_artists",
+                    "FEmusic_library_corpus_artists",
+                    "FEmusic_library_corpus_track_playlists",
+                )
+                browseIds.map { browseId ->
+                    async {
+                        withTimeoutOrNull(5_500L) {
+                            YouTube.browse(browseId, null).getOrNull()
+                                ?.items
+                                .orEmpty()
+                                .flatMap { it.items }
+                        }.orEmpty()
+                    }
+                }.awaitAll().flatten().dedupeItems()
+            }
+            val releasesDeferred = async {
+                withTimeoutOrNull(6_000L) {
+                    YouTube.newReleaseAlbums().getOrNull()
+                }.orEmpty()
+            }
+            val discoveryDeferred = async {
+                seeds.map { seed ->
+                    async {
+                        withTimeoutOrNull(5_500L) {
+                            YouTube.searchSummary(seed).getOrNull()
+                                ?.summaries
+                                .orEmpty()
+                                .flatMap { it.items }
+                        }.orEmpty()
+                    }
+                }.awaitAll().flatten().dedupeItems()
+            }
+
+            val homePage = homeDeferred.await()
+            val homeSections = homePage?.sections.orEmpty()
+            val homeItems = homeSections.flatMap { it.items }.dedupeItems()
+            val historySongs = historyDeferred.await().dedupeItems()
+            val likedSongs = likedDeferred.await().dedupeItems()
+            val libraryItems = libraryDeferred.await()
+            val releaseAlbums = releasesDeferred.await().dedupeItems()
+            val discoveryItems = discoveryDeferred.await()
+
+            fun titleMatches(title: String, terms: List<String>): Boolean {
+                val normalized = title.lowercase(Locale.ROOT)
+                return terms.any(normalized::contains)
+            }
+
+            val quickPickSongs = homeSections
+                .filter {
+                    titleMatches(
+                        it.title,
+                        listOf("quick", "escolha", "pick", "para você", "for you"),
+                    )
+                }
+                .flatMap { it.items }
+                .filterIsInstance<SongItem>()
+                .dedupeItems()
+
+            val homeListenAgain = homeSections
+                .filter {
+                    titleMatches(
+                        it.title,
+                        listOf("listen again", "ouvir de novo", "novamente", "recently played", "histórico"),
+                    )
+                }
+                .flatMap { it.items }
+                .filterIsInstance<SongItem>()
+
+            val newReleaseSongs = homeSections
+                .filter {
+                    titleMatches(
+                        it.title,
+                        listOf("new release", "new music", "lançamento", "novidade", "recém-lanç"),
+                    )
+                }
+                .flatMap { it.items }
+                .filterIsInstance<SongItem>()
+                .dedupeItems()
+
+            val listenAgain = (historySongs + homeListenAgain).dedupeItems()
+            val catalogItems = (
+                homeItems +
+                    discoveryItems +
+                    newReleaseSongs +
+                    likedSongs.take(30) +
+                    libraryItems.take(40)
+                ).dedupeItems()
+            val libraryResult = searchResultMap(libraryItems)
+
+            mapOf(
+                "authenticated" to authenticated,
+                "catalog" to searchResultMap(catalogItems),
+                "quickPicks" to quickPickSongs.take(40).map { songMap(it) },
+                "listenAgain" to listenAgain.take(80).map { songMap(it) },
+                "accountHistory" to historySongs.take(120).map { songMap(it) },
+                "likedSongs" to likedSongs.take(120).map { songMap(it) },
+                "librarySongs" to (libraryResult["songs"] ?: emptyList<Map<String, Any?>>()),
+                "newReleaseSongs" to newReleaseSongs.take(60).map { songMap(it) },
+                "newReleaseAlbums" to releaseAlbums.take(60).map { albumMap(it) },
+                "libraryAlbums" to (libraryResult["albums"] ?: emptyList<Map<String, Any?>>()),
+                "libraryArtists" to (libraryResult["artists"] ?: emptyList<Map<String, Any?>>()),
+                "libraryPlaylists" to (libraryResult["playlists"] ?: emptyList<Map<String, Any?>>()),
+            )
+        }
+    }
+
+    fun setSongLike(context: Context, videoId: String, liked: Boolean): Boolean =
+        runBlocking(Dispatchers.IO) {
+            ensureInitialized(context)
+            require(!YouTube.cookie.isNullOrBlank()) { "Conta Google não conectada" }
+            YouTube.useLoginForBrowse = true
+            YouTube.likeVideo(videoId, liked).getOrThrow()
+            true
+        }
+
+    fun registerAccountPlayback(context: Context, videoId: String): Boolean =
+        runBlocking(Dispatchers.IO) {
+            ensureInitialized(context)
+            if (videoId.isBlank() || YouTube.cookie.isNullOrBlank()) {
+                return@runBlocking false
+            }
+            YouTube.useLoginForBrowse = true
+            val response = YouTube.player(
+                videoId = videoId,
+                playlistId = null,
+                client = YouTubeClient.WEB_REMIX,
+            ).getOrThrow()
+            val playbackUrl = response.playbackTracking
+                ?.videostatsPlaybackUrl
+                ?.baseUrl
+                ?.takeIf { it.isNotBlank() }
+                ?: return@runBlocking false
+            YouTube.registerPlayback(playbackTracking = playbackUrl).getOrThrow()
+            true
+        }
 
 
 

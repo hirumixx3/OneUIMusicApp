@@ -167,6 +167,12 @@ class MainActivity : AudioServiceActivity() {
                     "home" -> runAsync(result, "METROLIST_HOME_ERROR") {
                         MetrolistOnlineBridge.home(applicationContext)
                     }
+                    "personalizedHome" -> {
+                        val seeds = call.argument<List<String>>("seeds") ?: emptyList()
+                        runAsync(result, "METROLIST_PERSONALIZED_HOME_ERROR") {
+                            MetrolistOnlineBridge.personalizedHome(applicationContext, seeds)
+                        }
+                    }
                     "search" -> {
                         val query = call.argument<String>("query") ?: ""
                         runAsync(result, "METROLIST_SEARCH_ERROR") {
@@ -208,6 +214,19 @@ class MainActivity : AudioServiceActivity() {
                         val queries = call.argument<List<String>>("queries") ?: emptyList()
                         runAsync(result, "METROLIST_PLAYLISTS_ERROR") {
                             MetrolistOnlineBridge.fetchPersonalizedPlaylists(applicationContext, queries)
+                        }
+                    }
+                    "setSongLike" -> {
+                        val videoId = call.argument<String>("videoId") ?: ""
+                        val liked = call.argument<Boolean>("liked") ?: true
+                        runAsync(result, "METROLIST_LIKE_ERROR") {
+                            MetrolistOnlineBridge.setSongLike(applicationContext, videoId, liked)
+                        }
+                    }
+                    "registerAccountPlayback" -> {
+                        val videoId = call.argument<String>("videoId") ?: ""
+                        runAsync(result, "METROLIST_HISTORY_ERROR") {
+                            MetrolistOnlineBridge.registerAccountPlayback(applicationContext, videoId)
                         }
                     }
                     "album" -> {

@@ -30,6 +30,7 @@ object MetrolistYouTubeSession {
 
         val cookie = prefs.getString(KEY_COOKIE, null)?.takeIf { it.isNotBlank() && it != "null" }
         YouTube.cookie = cookie
+        YouTube.useLoginForBrowse = cookie != null
 
         val dataSyncId = normalizeDataSyncId(prefs.getString(KEY_DATA_SYNC_ID, null))
         if (!dataSyncId.isNullOrBlank()) YouTube.dataSyncId = dataSyncId
@@ -95,6 +96,7 @@ object MetrolistYouTubeSession {
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         YouTube.cookie = rawCookie.takeIf { it.isNotBlank() }
+        YouTube.useLoginForBrowse = YouTube.cookie != null
         prefs.edit()
             .putString(KEY_COOKIE, rawCookie)
             .putString("account_name", name)
@@ -108,6 +110,7 @@ object MetrolistYouTubeSession {
         val app = context.applicationContext
         YouTube.cookie = null
         YouTube.dataSyncId = null
+        YouTube.useLoginForBrowse = false
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_COOKIE)
