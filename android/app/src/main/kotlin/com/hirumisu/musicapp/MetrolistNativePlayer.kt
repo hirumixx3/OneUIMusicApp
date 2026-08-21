@@ -14,7 +14,6 @@ import android.graphics.BitmapFactory
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -38,7 +37,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import com.metrolist.innertube.YouTube
 import com.metrolist.music.constants.AudioQuality
-import com.metrolist.music.utils.YTPlayerUtils
 import com.metrolist.music.utils.cipher.CipherDeobfuscator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -58,7 +56,7 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Único player nativo do app.
  *
- * Online: ExoPlayer -> ResolvingDataSource -> YTPlayerUtils/Innertube.
+ * Online: ExoPlayer -> ResolvingDataSource -> resolvedor nativo Metrolist/Innertube.
  * Local:  ExoPlayer -> DefaultDataSource -> file/content Uri.
  *
  * O Flutter só envia a fila e controla UI; a notificação Android controla o
@@ -221,7 +219,10 @@ object MetrolistNativePlayer {
             if (current !== p || current.mediaItemCount <= 0) return@postDelayed
             if (attempt <= 1) {
                 // Primeira falha: invalida cache, reabre o mesmo item e deixa o ExoPlayer resolver de novo.
-                if (key.isNotBlank()) songUrlCache.remove(key)
+                if (key.isNotBlank()) {
+                    songUrlCache.remove(key)
+                    MetrolistStreamResolver.invalidate(key)
+                }
                 val index = current.currentMediaItemIndex.coerceIn(0, current.mediaItemCount - 1)
                 playMediaIndex(current, index, current.currentPosition.coerceAtLeast(0L))
             } else {
@@ -261,7 +262,10 @@ object MetrolistNativePlayer {
                 val streamKey = created.currentMediaItem?.localConfiguration?.customCacheKey.orEmpty()
                 lastError = "${error.errorCodeName}: ${error.message ?: error.cause?.message ?: "erro"}"
                 if (streamKey.isNotBlank()) songUrlCache.remove(streamKey)
-                if (mediaId.isNotBlank()) songUrlCache.remove(mediaId)
+                if (mediaId.isNotBlank()) {
+                    songUrlCache.remove(mediaId)
+                    MetrolistStreamResolver.invalidate(mediaId)
+                }
                 Timber.tag(TAG).e(error, "Erro no player nativo do Metrolist para %s", mediaId)
                 recoverPlaybackError(created, context.applicationContext, mediaId.ifBlank { streamKey })
                 updateNotification(context.applicationContext)
@@ -349,13 +353,14 @@ object MetrolistNativePlayer {
             }
 
             Timber.tag(TAG).i("FETCHING STREAM: %s | quality=%s", mediaId, currentQuality)
-            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val playbackData = runBlocking(Dispatchers.IO) {
-                YTPlayerUtils.playerResponseForPlayback(
-                    mediaId,
-                    audioQuality = currentQuality,
-                    connectivityManager = connectivityManager,
-                )
+                runCatching {
+                    MetrolistStreamResolver.resolvePlaybackForProxy(
+                        context.applicationContext,
+                        mediaId,
+                        currentQuality.name,
+                    )
+                }
             }.getOrElse { throwable ->
                 when (throwable) {
                     is PlaybackException -> throw throwable
@@ -377,9 +382,9 @@ object MetrolistNativePlayer {
                 }
             }
 
-            val streamUrl = playbackData.streamUrl
+            val streamUrl = playbackData.url
             songUrlCache[mediaId] = streamUrl to (
-                System.currentTimeMillis() + (playbackData.streamExpiresInSeconds * 1000L) - CACHE_SAFETY_MS
+                System.currentTimeMillis() + (playbackData.expiresInSeconds * 1000L) - CACHE_SAFETY_MS
             )
             dataSpec.withUri(Uri.parse(streamUrl)).subrange(dataSpec.uriPositionOffset, CHUNK_LENGTH)
         }
@@ -526,7 +531,10 @@ object MetrolistNativePlayer {
 
     fun invalidate(videoId: String): Map<String, Any?> = onMainSync {
         val key = videoId.trim()
-        if (key.isNotEmpty()) songUrlCache.remove(key)
+        if (key.isNotEmpty()) {
+            songUrlCache.remove(key)
+            MetrolistStreamResolver.invalidate(key)
+        }
         state()
     }
 

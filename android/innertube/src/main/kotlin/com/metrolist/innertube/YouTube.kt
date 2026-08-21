@@ -2732,10 +2732,35 @@ object YouTube {
         client: YouTubeClient,
         signatureTimestamp: Int? = null,
         poToken: String? = null,
-    ): Result<PlayerResponse> =
-        runCatching {
-            innerTube.player(client, videoId, playlistId, signatureTimestamp, poToken).body<PlayerResponse>()
+    ): Result<PlayerResponse> {
+        val youtubeResult = runCatching {
+            innerTube.player(
+                client,
+                videoId,
+                playlistId,
+                signatureTimestamp,
+                poToken,
+                useMusicEndpoint = false,
+            ).body<PlayerResponse>()
         }
+        if (youtubeResult.isSuccess) return youtubeResult
+
+        Timber.tag("InnertubePlayer").w(
+            youtubeResult.exceptionOrNull(),
+            "www.youtube.com player failed for %s; trying music endpoint",
+            client.clientName,
+        )
+        return runCatching {
+            innerTube.player(
+                client,
+                videoId,
+                playlistId,
+                signatureTimestamp,
+                poToken,
+                useMusicEndpoint = true,
+            ).body<PlayerResponse>()
+        }
+    }
 
     suspend fun registerPlayback(
         playlistId: String? = null,

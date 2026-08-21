@@ -2419,7 +2419,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     final terms = _collectOnlineRecommendationQueries();
 
     // Fetch songs in parallel instead of sequentially for speed
-    final songFutures = terms.take(10).map((term) async {
+    final songFutures = terms.take(4).map((term) async {
       try {
         return await _searchSongsNative(term).timeout(const Duration(seconds: 5));
       } catch (_) {
@@ -2533,82 +2533,33 @@ class MusicPlayerProvider extends ChangeNotifier {
         _onlineSongsContinuationQuery = rawQuery;
         _isLoadingMoreOnlineSongs = false;
 
-        final Future<_NativeSongsPage> songsFuture = _searchSongsPageNative(rawQuery)
-            .timeout(const Duration(seconds: 7))
-            .catchError((_) => const _NativeSongsPage(songs: <AudioTrack>[], continuation: null));
-        final Future<OnlineSearchResult> summaryFuture = _searchNative(rawQuery)
-            .timeout(const Duration(seconds: 7))
-            .catchError((_) => const OnlineSearchResult(songs: <AudioTrack>[], albums: <OnlineAlbum>[], artists: <OnlineArtist>[], playlists: <OnlinePlaylist>[]));
-        final Future<List<OnlineAlbum>> albumsFuture = _searchAlbumsNative(rawQuery)
-            .timeout(const Duration(seconds: 7))
-            .catchError((_) => const <OnlineAlbum>[]);
-        final Future<List<OnlineArtist>> artistsFuture = _searchArtistsNative(rawQuery)
-            .timeout(const Duration(seconds: 7))
-            .catchError((_) => const <OnlineArtist>[]);
-        final Future<List<OnlinePlaylist>> playlistsFuture = _searchPlaylistsNative(rawQuery)
-            .timeout(const Duration(seconds: 7))
-            .catchError((_) => const <OnlinePlaylist>[]);
-
-        final firstPage = await songsFuture;
+        // Uma única operação nativa devolve músicas, álbuns, artistas e
+        // playlists em paralelo. A implementação anterior disparava cinco
+        // buscas completas ao mesmo tempo e, quando uma delas expirava,
+        // repetia várias consultas em sequência.
+        final summaryResult = await _searchNative(rawQuery).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => const OnlineSearchResult(
+            songs: <AudioTrack>[],
+            albums: <OnlineAlbum>[],
+            artists: <OnlineArtist>[],
+            playlists: <OnlinePlaylist>[],
+          ),
+        );
         if (requestId != _onlineSearchRequestSerial) return;
-        final firstSongs = _dedupeTracks(firstPage.songs);
-        _onlineSongsContinuation = firstPage.continuation;
-        if (firstSongs.isNotEmpty) {
-          _onlineSongs = firstSongs;
-          _onlineError = null;
-          notifyListeners();
-          if (firstSongs.length < 60 && hasMoreOnlineSongs) {
-            unawaited(_autoFillOnlineSongs(target: 60, maxPages: 4));
-          }
-        }
+        var mergedSongs = _dedupeTracks(summaryResult.songs);
+        var safeAlbums = _dedupeAlbums(summaryResult.albums);
+        var safeArtists = _dedupeRecommendedArtists(summaryResult.artists);
+        var safePlaylists = _dedupePlaylists(summaryResult.playlists);
 
-        final results = await Future.wait<dynamic>([summaryFuture, albumsFuture, artistsFuture, playlistsFuture]);
-        if (requestId != _onlineSearchRequestSerial) return;
-        final summaryResult = results[0] as OnlineSearchResult;
-        final albumsResult = results[1] as List<OnlineAlbum>;
-        final artistsResult = results[2] as List<OnlineArtist>;
-        final playlistsResult = results[3] as List<OnlinePlaylist>;
-        final mergedAlbums = _dedupeAlbums(<OnlineAlbum>[...summaryResult.albums, ...albumsResult]);
-        final mergedArtists = _dedupeRecommendedArtists(<OnlineArtist>[...summaryResult.artists, ...artistsResult]);
-        final mergedPlaylists = _dedupePlaylists(<OnlinePlaylist>[...summaryResult.playlists, ...playlistsResult]);
-
-        var mergedSongs = _dedupeTracks(<AudioTrack>[..._onlineSongs, ...firstSongs, ...summaryResult.songs]);
-        var safeAlbums = mergedAlbums;
-        var safeArtists = mergedArtists;
-        var safePlaylists = mergedPlaylists;
+        // Recuperação única e limitada para redes onde o endpoint Music está
+        // bloqueado. O bridge usa a pesquisa pública do YouTube nesse caminho.
         if (mergedSongs.isEmpty) {
-          for (final variant in _onlineQueryFallbacks(rawQuery)) {
-            if (variant == rawQuery) continue;
-            try {
-              final extra = await _searchSongsNative(variant).timeout(const Duration(seconds: 4));
-              mergedSongs = _dedupeTracks(<AudioTrack>[...mergedSongs, ...extra]);
-              if (mergedSongs.isNotEmpty) break;
-            } catch (_) {}
-          }
-        }
-        if (safeAlbums.isEmpty) {
-          for (final variant in _onlineQueryFallbacks(rawQuery).take(3)) {
-            try {
-              safeAlbums = _dedupeAlbums(<OnlineAlbum>[...safeAlbums, ...await _searchAlbumsNative(variant).timeout(const Duration(seconds: 4))]);
-              if (safeAlbums.isNotEmpty) break;
-            } catch (_) {}
-          }
-        }
-        if (safeArtists.isEmpty) {
-          for (final variant in _onlineQueryFallbacks(rawQuery).take(3)) {
-            try {
-              safeArtists = _dedupeRecommendedArtists(<OnlineArtist>[...safeArtists, ...await _searchArtistsNative(variant).timeout(const Duration(seconds: 4))]);
-              if (safeArtists.isNotEmpty) break;
-            } catch (_) {}
-          }
-        }
-        if (safePlaylists.isEmpty) {
-          for (final variant in _onlineQueryFallbacks(rawQuery).take(3)) {
-            try {
-              safePlaylists = _dedupePlaylists(<OnlinePlaylist>[...safePlaylists, ...await _searchPlaylistsNative(variant).timeout(const Duration(seconds: 4))]);
-              if (safePlaylists.isNotEmpty) break;
-            } catch (_) {}
-          }
+          try {
+            mergedSongs = _dedupeTracks(
+              await _searchSongsNative(rawQuery).timeout(const Duration(seconds: 8)),
+            );
+          } catch (_) {}
         }
         if (safeAlbums.isEmpty) safeAlbums = _albumsFromTracks(mergedSongs, query: rawQuery);
         if (safeArtists.isEmpty) safeArtists = _artistsFromTracks(mergedSongs);
@@ -2617,9 +2568,9 @@ class MusicPlayerProvider extends ChangeNotifier {
         _onlineAlbums = safeAlbums;
         _onlineArtists = safeArtists;
         _onlinePlaylists = safePlaylists;
+        _onlineRecommendedSongs = _rankOnlineRecommendedSongs(mergedSongs).take(40).toList(growable: false);
         _onlineRecommendedArtists = _rankRecommendedArtists(safeArtists).take(24).toList(growable: false);
         _onlineRecommendedPlaylists = _dedupePlaylists(safePlaylists).take(40).toList(growable: false);
-        unawaited(_refreshOnlineRecommendations(seedSongs: _onlineSongs));
         if (_onlineSongs.length < 60 && hasMoreOnlineSongs) {
           unawaited(_autoFillOnlineSongs(target: 60, maxPages: 4));
         }

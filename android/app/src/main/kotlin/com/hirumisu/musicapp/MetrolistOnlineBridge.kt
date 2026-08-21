@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
 import okhttp3.MediaType.Companion.toMediaType
@@ -61,12 +62,8 @@ object MetrolistOnlineBridge {
             "top músicas brasil",
             "lançamentos brasil",
             "músicas virais",
-            "sertanejo hits",
-            "funk atual",
             "pop hits",
             "kpop hits",
-            "relax music",
-            "playlist brasil",
         )
         val homeDeferred = async {
             withTimeoutOrNull(4500L) {
@@ -346,20 +343,33 @@ object MetrolistOnlineBridge {
         return mergeSongMaps(collected).take(limit)
     }
 
-    private fun fetchYoutubeWebSongMaps(query: String, page: Int = 0, limit: Int = 60): List<Map<String, Any?>> {
+    private fun fetchYoutubeWebSongMaps(
+        query: String,
+        page: Int = 0,
+        limit: Int = 60,
+        quick: Boolean = false,
+    ): List<Map<String, Any?>> {
         if (query.isBlank()) return emptyList()
-        val direct = fetchInnertubeRawSongMaps(query, page = page, limit = limit)
+        // O endpoint music.youtube.com pode devolver a página anti-bot. No
+        // caminho rápido usamos diretamente a página pública www.youtube.com,
+        // em uma única tentativa limitada pelo OkHttpClient.
+        val direct = if (quick) emptyList() else fetchInnertubeRawSongMaps(query, page = page, limit = limit)
         if (direct.size >= (limit / 3).coerceAtLeast(8)) return direct.take(limit)
         val collected = mutableListOf<Map<String, Any?>>()
         collected += direct
         val seen = linkedSetOf<String>()
         direct.forEach { seen += (it["videoId"] ?: it["id"] ?: "").toString() }
-        for (variant in webSearchQueries(query, page)) {
+        val queries = if (quick) listOf(query.trim()) else webSearchQueries(query, page)
+        for (variant in queries) {
             val encoded = URLEncoder.encode(variant, StandardCharsets.UTF_8.name())
-            val urls = listOf(
-                "https://www.youtube.com/results?search_query=$encoded",
-                "https://music.youtube.com/search?q=$encoded",
-            )
+            val urls = if (quick) {
+                listOf("https://www.youtube.com/results?search_query=$encoded")
+            } else {
+                listOf(
+                    "https://www.youtube.com/results?search_query=$encoded",
+                    "https://music.youtube.com/search?q=$encoded",
+                )
+            }
             for (url in urls) {
                 val body = runCatching {
                     val request = Request.Builder()
@@ -415,129 +425,100 @@ object MetrolistOnlineBridge {
         return mergeSongMaps(collected).take(limit)
     }
 
-    private suspend fun searchSongItems(query: String, limit: Int = 200): List<SongItem> {
-        val audioSongs = mutableListOf<SongItem>()
-        val videoSongs = mutableListOf<SongItem>()
-
-        fun collect(items: List<SongItem>) {
-            val deduped = items.dedupeItems()
-            audioSongs += deduped.filterNot { it.isVideoSong }
-            videoSongs += deduped.filter { it.isVideoSong }
+    private suspend fun searchSongItems(query: String, limit: Int = 200): List<SongItem> = supervisorScope {
+        val variants = queryVariants(query).take(2)
+        val calls = variants.flatMap { variant ->
+            listOf(
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG)
+                            .getOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
+                    }.orEmpty()
+                },
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.searchSummary(variant).getOrNull()?.summaries
+                            ?.flatMap { it.items }
+                            ?.filterIsInstance<SongItem>()
+                            .orEmpty()
+                    }.orEmpty()
+                },
+            )
         }
+        val collected = calls.awaitAll().flatten().dedupeItems()
+        val audio = collected.filterNot { it.isVideoSong }
+        val videos = collected.filter { it.isVideoSong }.filterNot { video -> audio.any { it.id == video.id } }
+        if (audio.isNotEmpty()) return@supervisorScope (audio + videos).take(limit)
 
-        for (variant in queryVariants(query)) {
-            runCatching {
-                YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG)
-                    .getOrThrow()
-                    .items
-                    .filterIsInstance<SongItem>()
-            }.getOrDefault(emptyList()).let(::collect)
-
-            runCatching {
-                YouTube.searchSummary(variant).getOrThrow().summaries
-                    .flatMap { it.items }
-                    .filterIsInstance<SongItem>()
-            }.getOrDefault(emptyList()).let(::collect)
-
-            if (audioSongs.dedupeItems().size >= limit) break
-        }
-
-        if (audioSongs.dedupeItems().size < 24) {
-            for (variant in expandedSongQueries(query).drop(queryVariants(query).size)) {
-                runCatching {
-                    YouTube.search(variant, YouTube.SearchFilter.FILTER_SONG)
-                        .getOrThrow()
-                        .items
-                        .filterIsInstance<SongItem>()
-                }.getOrDefault(emptyList()).let(::collect)
-                if (audioSongs.dedupeItems().size >= 48) break
-            }
-        }
-
-        if (audioSongs.dedupeItems().size < 18) {
-            for (variant in queryVariants(query)) {
-                runCatching {
-                    YouTube.search(variant, YouTube.SearchFilter.FILTER_VIDEO)
-                        .getOrThrow()
-                        .items
-                        .filterIsInstance<SongItem>()
-                }.getOrDefault(emptyList()).let(::collect)
-                if ((audioSongs + videoSongs).dedupeItems().size >= limit) break
-            }
-        }
-
-        val audio = audioSongs.dedupeItems()
-        val videos = videoSongs.dedupeItems().filterNot { video -> audio.any { it.id == video.id } }
-        return (audio + videos).take(limit)
+        val videoFallback = withTimeoutOrNull(4200L) {
+            YouTube.search(query.trim(), YouTube.SearchFilter.FILTER_VIDEO)
+                .getOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
+        }.orEmpty()
+        videoFallback.dedupeItems().take(limit)
     }
 
-    private suspend fun searchAlbumItems(query: String, limit: Int = 120): List<AlbumItem> {
-        val all = mutableListOf<AlbumItem>()
-        for (variant in queryVariants(query)) {
-            runCatching {
-                YouTube.searchSummary(variant).getOrThrow().summaries
-                    .flatMap { it.items }
-                    .filterIsInstance<AlbumItem>()
-            }.getOrDefault(emptyList()).let { all += it }
-            runCatching {
-                YouTube.search(variant, YouTube.SearchFilter.FILTER_ALBUM)
-                    .getOrThrow()
-                    .items
-                    .filterIsInstance<AlbumItem>()
-            }.getOrDefault(emptyList()).let { all += it }
-            if (all.size >= limit) break
-        }
-        return all.dedupeItems().take(limit)
+    private suspend fun searchAlbumItems(query: String, limit: Int = 120): List<AlbumItem> = supervisorScope {
+        queryVariants(query).take(2).flatMap { variant ->
+            listOf(
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.search(variant, YouTube.SearchFilter.FILTER_ALBUM)
+                            .getOrNull()?.items?.filterIsInstance<AlbumItem>().orEmpty()
+                    }.orEmpty()
+                },
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.searchSummary(variant).getOrNull()?.summaries
+                            ?.flatMap { it.items }?.filterIsInstance<AlbumItem>().orEmpty()
+                    }.orEmpty()
+                },
+            )
+        }.awaitAll().flatten().dedupeItems().take(limit)
     }
 
-    private suspend fun searchArtistItems(query: String, limit: Int = 120): List<ArtistItem> {
-        val all = mutableListOf<ArtistItem>()
-        for (variant in queryVariants(query)) {
-            runCatching {
-                YouTube.searchSummary(variant).getOrThrow().summaries
-                    .flatMap { it.items }
-                    .filterIsInstance<ArtistItem>()
-            }.getOrDefault(emptyList()).let { all += it }
-            runCatching {
-                YouTube.search(variant, YouTube.SearchFilter.FILTER_ARTIST)
-                    .getOrThrow()
-                    .items
-                    .filterIsInstance<ArtistItem>()
-            }.getOrDefault(emptyList()).let { all += it }
-            if (all.size >= limit) break
-        }
-        return all.dedupeItems().take(limit)
+    private suspend fun searchArtistItems(query: String, limit: Int = 120): List<ArtistItem> = supervisorScope {
+        queryVariants(query).take(2).flatMap { variant ->
+            listOf(
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.search(variant, YouTube.SearchFilter.FILTER_ARTIST)
+                            .getOrNull()?.items?.filterIsInstance<ArtistItem>().orEmpty()
+                    }.orEmpty()
+                },
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.searchSummary(variant).getOrNull()?.summaries
+                            ?.flatMap { it.items }?.filterIsInstance<ArtistItem>().orEmpty()
+                    }.orEmpty()
+                },
+            )
+        }.awaitAll().flatten().dedupeItems().take(limit)
     }
 
-    private suspend fun searchPlaylistItems(query: String, limit: Int = 120): List<PlaylistItem> {
-        val all = mutableListOf<PlaylistItem>()
-        for (variant in queryVariants(query)) {
-            runCatching {
-                YouTube.searchSummary(variant).getOrThrow().summaries
-                    .flatMap { it.items }
-                    .mapNotNull {
-                        when (it) {
-                            is PlaylistItem -> it
-                            is PodcastItem -> it.asPlaylistItem()
-                            else -> null
-                        }
-                    }
-            }.getOrDefault(emptyList()).let { all += it }
-            runCatching {
-                YouTube.search(variant, YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST)
-                    .getOrThrow()
-                    .items
-                    .filterIsInstance<PlaylistItem>()
-            }.getOrDefault(emptyList()).let { all += it }
-            runCatching {
-                YouTube.search(variant, YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST)
-                    .getOrThrow()
-                    .items
-                    .filterIsInstance<PlaylistItem>()
-            }.getOrDefault(emptyList()).let { all += it }
-            if (all.size >= limit) break
-        }
-        return all.dedupeItems().take(limit)
+    private suspend fun searchPlaylistItems(query: String, limit: Int = 120): List<PlaylistItem> = supervisorScope {
+        queryVariants(query).take(2).flatMap { variant ->
+            listOf(
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.search(variant, YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST)
+                            .getOrNull()?.items?.filterIsInstance<PlaylistItem>().orEmpty()
+                    }.orEmpty()
+                },
+                async {
+                    withTimeoutOrNull(4200L) {
+                        YouTube.searchSummary(variant).getOrNull()?.summaries
+                            ?.flatMap { it.items }
+                            ?.mapNotNull {
+                                when (it) {
+                                    is PlaylistItem -> it
+                                    is PodcastItem -> it.asPlaylistItem()
+                                    else -> null
+                                }
+                            }.orEmpty()
+                    }.orEmpty()
+                },
+            )
+        }.awaitAll().flatten().dedupeItems().take(limit)
     }
 
     fun search(context: Context, query: String): Map<String, Any?> = runBlocking(Dispatchers.IO) {
@@ -545,26 +526,60 @@ object MetrolistOnlineBridge {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return@runBlocking home(context)
 
-        val nativeSongMaps = searchSongItems(trimmed).take(200).map { songMap(it) }
-        val fallbackSongMaps = if (nativeSongMaps.size < 40) fetchYoutubeWebSongMaps(trimmed, page = 0, limit = 80) else emptyList()
-        val albumItems = searchAlbumItems(trimmed)
-        val artistItems = searchArtistItems(trimmed)
-        val playlistItems = searchPlaylistItems(trimmed)
+        // One YouTube Music summary plus one song-filter request is enough for
+        // the entire result screen. This avoids hammering the endpoint with a
+        // separate full search for every tab.
+        val summaryItems = async {
+            withTimeoutOrNull(5200L) {
+                YouTube.searchSummary(trimmed).getOrNull()?.summaries
+                    ?.flatMap { it.items }
+                    .orEmpty()
+            }.orEmpty()
+        }
+        val filteredSongs = async {
+            withTimeoutOrNull(5200L) {
+                YouTube.search(trimmed, YouTube.SearchFilter.FILTER_SONG)
+                    .getOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
+            }.orEmpty()
+        }
+        val publicSongs = async { fetchYoutubeWebSongMaps(trimmed, limit = 60, quick = true) }
+        val summary = summaryItems.await().dedupeItems()
+        val nativeSongMaps = (filteredSongs.await() + summary.filterIsInstance<SongItem>())
+            .dedupeItems()
+            .map { songMap(it) }
+        val songMaps = mergeSongMaps(nativeSongMaps + publicSongs.await()).take(180)
 
         mapOf(
-            "songs" to mergeSongMaps(nativeSongMaps + fallbackSongMaps).take(220),
-            "albums" to albumItems.take(100).map { albumMap(it) },
-            "artists" to artistItems.take(100).map { artistMap(it) },
-            "playlists" to playlistItems.take(100).map { playlistMap(it) },
+            "songs" to songMaps,
+            "albums" to summary.filterIsInstance<AlbumItem>().take(100).map { albumMap(it) },
+            "artists" to summary.filterIsInstance<ArtistItem>().take(100).map { artistMap(it) },
+            "playlists" to summary.mapNotNull {
+                when (it) {
+                    is PlaylistItem -> it
+                    is PodcastItem -> it.asPlaylistItem()
+                    else -> null
+                }
+            }.dedupeItems().take(100).map { playlistMap(it) },
         )
     }
 
     fun searchSongs(context: Context, query: String): List<Map<String, Any?>> = runBlocking(Dispatchers.IO) {
         ensureInitialized(context)
         val trimmed = query.trim()
-        val native = searchSongItems(trimmed).map { songMap(it) }
-        val fallback = if (native.size < 60) fetchYoutubeWebSongMaps(trimmed, page = 0, limit = 100) else emptyList()
-        mergeSongMaps(native + fallback).take(220)
+        val native = async {
+            withTimeoutOrNull(5200L) {
+                YouTube.search(trimmed, YouTube.SearchFilter.FILTER_SONG)
+                    .getOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
+            }.orEmpty().map { songMap(it) }
+        }
+        val summary = async {
+            withTimeoutOrNull(5200L) {
+                YouTube.searchSummary(trimmed).getOrNull()?.summaries
+                    ?.flatMap { it.items }?.filterIsInstance<SongItem>().orEmpty()
+            }.orEmpty().map { songMap(it) }
+        }
+        val fallback = async { fetchYoutubeWebSongMaps(trimmed, limit = 70, quick = true) }
+        mergeSongMaps(native.await() + summary.await() + fallback.await()).take(180)
     }
 
     fun searchSongsPage(context: Context, query: String, continuation: String): Map<String, Any?> = runBlocking(Dispatchers.IO) {

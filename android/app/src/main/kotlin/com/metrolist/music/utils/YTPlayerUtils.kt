@@ -286,8 +286,10 @@ object YTPlayerUtils {
                 Timber.tag(TAG).d("  useWebPoTokens: ${currentClient.useWebPoTokens}")
 
                 // Apply n-transform and PoToken for web clients (WEB, WEB_REMIX, WEB_CREATOR, TVHTML5)
-                val needsNTransform = currentClient.useWebPoTokens ||
-                    currentClient.clientName in listOf("WEB", "WEB_REMIX", "WEB_CREATOR", "TVHTML5")
+                val needsNTransform = !format.url.isNullOrBlank() && (
+                    currentClient.useWebPoTokens ||
+                        currentClient.clientName in listOf("WEB", "WEB_REMIX", "WEB_CREATOR", "TVHTML5")
+                    )
 
                 Timber.tag(TAG).d("N-transform decision:")
                 Timber.tag(TAG).d("  needsNTransform: $needsNTransform")
@@ -574,19 +576,9 @@ object YTPlayerUtils {
             return format.url
         }
 
-        // Try custom cipher deobfuscation for signatureCipher formats
-        val signatureCipher = format.signatureCipher ?: format.cipher
-        if (!signatureCipher.isNullOrEmpty()) {
-            Timber.tag(logTag).d("Format has signatureCipher, using custom deobfuscation")
-            val customDeobfuscatedUrl = CipherDeobfuscator.deobfuscateStreamUrl(signatureCipher, videoId)
-            if (customDeobfuscatedUrl != null) {
-                Timber.tag(logTag).d("Stream URL obtained via custom cipher deobfuscation")
-                return customDeobfuscatedUrl
-            }
-            Timber.tag(logTag).d("Custom cipher deobfuscation failed")
-        }
-
-        // Try the exact Metrolist NewPipe helper first: it deobfuscates both the
+        // Use the AST-based NewPipe player manager before the legacy regex
+        // extractor. It deobfuscates both the signature and the n= parameter
+        // and keeps working when YouTube changes minified function names.
         // cipher signature and the throttling n= parameter from player.js.
         val newPipeUtilsUrl = NewPipeUtils.getStreamUrl(format, videoId).getOrNull()
         if (!newPipeUtilsUrl.isNullOrBlank()) {
@@ -600,6 +592,16 @@ object YTPlayerUtils {
         if (!deobfuscatedUrl.isNullOrBlank()) {
             Timber.tag(logTag).d("Stream URL obtained via NewPipeExtractor deobfuscation")
             return deobfuscatedUrl
+        }
+
+        // Last resort for devices where the extractor dependency cannot load.
+        val signatureCipher = format.signatureCipher ?: format.cipher
+        if (!signatureCipher.isNullOrEmpty()) {
+            val customDeobfuscatedUrl = CipherDeobfuscator.deobfuscateStreamUrl(signatureCipher, videoId)
+            if (customDeobfuscatedUrl != null) {
+                Timber.tag(logTag).d("Stream URL obtained via legacy cipher fallback")
+                return customDeobfuscatedUrl
+            }
         }
 
         // Skip StreamInfo fallback for age-restricted or private content

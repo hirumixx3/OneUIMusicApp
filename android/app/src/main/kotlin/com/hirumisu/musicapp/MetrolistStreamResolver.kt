@@ -13,6 +13,7 @@ import com.metrolist.music.utils.cipher.CipherDeobfuscator
 import com.metrolist.music.utils.sabr.EjsNTransformSolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
@@ -203,12 +204,19 @@ object MetrolistStreamResolver {
         quality: AudioQuality,
         connectivityManager: ConnectivityManager,
     ): NativePlayback {
-        val metrolistResult = YTPlayerUtils.playerResponseForPlayback(
-            videoId = videoId,
-            playlistId = null,
-            audioQuality = quality,
-            connectivityManager = connectivityManager,
-        )
+        // Perfis nativos costumam devolver URLs diretas e não dependem do
+        // PoToken WEB_REMIX. Também usam o endpoint www.youtube.com, evitando
+        // o bloqueio anti-automação observado no music.youtube.com.
+        resolveWithVerifiedNativeFallbacks(videoId, quality)?.let { return it }
+
+        val metrolistResult = withTimeoutOrNull(12_000L) {
+            YTPlayerUtils.playerResponseForPlayback(
+                videoId = videoId,
+                playlistId = null,
+                audioQuality = quality,
+                connectivityManager = connectivityManager,
+            )
+        } ?: Result.failure(IllegalStateException("Tempo esgotado no fallback WEB_REMIX"))
         val metrolistData = metrolistResult.getOrNull()
         if (metrolistData != null && metrolistData.streamUrl.isNotBlank()) {
             val transformed = prepareUrl(metrolistData.streamUrl)
@@ -230,35 +238,32 @@ object MetrolistStreamResolver {
             }
         }
 
-        resolveWithVerifiedNativeFallbacks(videoId, quality)?.let { return it }
         throw metrolistResult.exceptionOrNull()
             ?: IllegalStateException("Innertube do Metrolist não devolveu stream reproduzível")
     }
 
     private suspend fun resolveWithVerifiedNativeFallbacks(videoId: String, quality: AudioQuality): NativePlayback? {
         val clients = listOf(
-            YouTubeClient.WEB_REMIX,
-            YouTubeClient.TVHTML5_SIMPLY_EMBEDDED_PLAYER,
-            YouTubeClient.TVHTML5,
-            YouTubeClient.ANDROID_VR_1_43_32,
             YouTubeClient.ANDROID_VR_1_61_48,
-            YouTubeClient.ANDROID_CREATOR,
-            YouTubeClient.IPADOS,
             YouTubeClient.ANDROID_VR_NO_AUTH,
-            YouTubeClient.MOBILE,
             YouTubeClient.IOS,
+            YouTubeClient.MOBILE,
+            YouTubeClient.TVHTML5_SIMPLY_EMBEDDED_PLAYER,
             YouTubeClient.WEB,
             YouTubeClient.WEB_CREATOR,
         )
 
         for (client in clients) {
-            val response = YouTube.player(
-                videoId = videoId,
-                playlistId = null,
-                client = client,
-                signatureTimestamp = null,
-                poToken = null,
-            ).getOrNull() ?: continue
+            if (client.loginRequired && YouTube.cookie.isNullOrBlank()) continue
+            val response = withTimeoutOrNull(6500L) {
+                YouTube.player(
+                    videoId = videoId,
+                    playlistId = null,
+                    client = client,
+                    signatureTimestamp = null,
+                    poToken = null,
+                ).getOrNull()
+            } ?: continue
 
             if (response.playabilityStatus.status != "OK") continue
             val formats = response.streamingData?.adaptiveFormats.orEmpty()
@@ -267,6 +272,12 @@ object MetrolistStreamResolver {
 
             for (format in formats) {
                 val candidateUrls = buildList {
+                    NewPipeUtils.getStreamUrl(format, videoId)
+                        .getOrNull()
+                        ?.trim()
+                        ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                        ?.let(::add)
+
                     runCatching { NewPipeExtractor.getStreamUrl(format, videoId) }
                         .getOrNull()
                         ?.trim()

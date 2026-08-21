@@ -480,12 +480,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final subtle = context.oneUiSecondary;
 
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final systemBottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final hasFloatingPlayer = provider.currentTrack != null && !keyboardOpen;
     final onlineMain = provider.tab == LibraryTab.online;
-    final onlineBottomBarHeight = onlineMain ? 82.0 : 0.0;
+    final onlineBottomBarHeight = onlineMain ? 72.0 + systemBottomInset : 0.0;
     final bottomPlayerReserve = keyboardOpen
         ? 8.0
-        : (hasFloatingPlayer ? (onlineMain ? 176.0 : 104.0) : onlineBottomBarHeight + 8.0);
+        : (hasFloatingPlayer
+            ? (onlineMain ? 151.0 + systemBottomInset : 80.0 + systemBottomInset)
+            : onlineBottomBarHeight);
 
     if (_controller.index != provider.tab.index && !_controller.indexIsChanging) {
       _controller.index = provider.tab.index;
@@ -664,7 +667,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   child: _CurrentLibraryView(card: card, keyboardOpen: keyboardOpen),
                                 ),
                     ),
-                    SizedBox(height: keyboardOpen ? 12 : (hasFloatingPlayer ? 104 : 12)),
+                    SizedBox(
+                      height: keyboardOpen
+                          ? 12
+                          : (hasFloatingPlayer ? 80 + systemBottomInset : 12),
+                    ),
                   ],
                 ),
               ),
@@ -673,27 +680,36 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 alignment: Alignment.bottomCenter,
                 child: FloatingPlayerBar(),
               ),
-            if (!keyboardOpen && onlineMain)
-              const Positioned(
-                left: 0,
-                right: 0,
-                bottom: 72,
-                child: FloatingPlayerBar(metrolistStyle: true),
-              ),
             if (onlineMain)
               Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: _MetrolistBottomNavigation(
-                  selectedIndex: _onlineShellIndex,
-                  onSelected: (index) async {
-                    if (index == 0) {
-                      await provider.clearOnlineQuery(reloadHome: true);
-                      provider.setOnlineSectionIndex(0);
-                    }
-                    setState(() => _onlineShellIndex = index);
-                  },
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 7),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!keyboardOpen && hasFloatingPlayer) ...[
+                        const FloatingPlayerBar(
+                          metrolistStyle: true,
+                          embedded: true,
+                        ),
+                        const SizedBox(height: 7),
+                      ],
+                      _MetrolistBottomNavigation(
+                        selectedIndex: _onlineShellIndex,
+                        onSelected: (index) async {
+                          if (index == 0) {
+                            await provider.clearOnlineQuery(reloadHome: true);
+                            provider.setOnlineSectionIndex(0);
+                          }
+                          setState(() => _onlineShellIndex = index);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
           ],
@@ -1114,15 +1130,14 @@ class _MetrolistBottomNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     final selected = Theme.of(context).colorScheme.primary;
     final unselected = context.oneUiSecondary;
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(14, 0, 14, 7),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: OneUi9Glass(
         radius: 30,
-        blur: 24,
+        blur: 28,
         strong: true,
         child: SizedBox(
-          height: 70,
+          height: 64,
           child: Row(
             children: [
               _MetrolistNavItem(
@@ -1185,15 +1200,15 @@ class _MetrolistNavItem extends StatelessWidget {
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
               decoration: BoxDecoration(
                 color: selected ? selectedColor.withOpacity(0.18) : Colors.transparent,
                 borderRadius: BorderRadius.circular(22),
                 border: selected ? Border.all(color: selectedColor.withOpacity(0.22)) : null,
               ),
-              child: Icon(icon, color: color, size: 27),
+              child: Icon(icon, color: color, size: 25),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Text(
               label,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -1224,7 +1239,7 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bottomPadding = provider.currentTrack == null ? 92.0 : 188.0;
+    const bottomPadding = 12.0;
     final active = provider.onlineActiveQuery.isNotEmpty;
     final songs = provider.onlineDisplaySongs;
     final albums = provider.onlineDisplayAlbums;
@@ -1494,7 +1509,7 @@ class _OnlineLibraryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
-    final bottomPadding = provider.currentTrack == null ? 92.0 : 188.0;
+    const bottomPadding = 12.0;
     final favorites = provider.onlineFavoriteTracks;
     final history = provider.onlineHistoryTracks;
     final playlists = provider.userPlaylists;

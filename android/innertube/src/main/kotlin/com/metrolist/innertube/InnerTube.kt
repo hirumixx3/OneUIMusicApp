@@ -142,21 +142,26 @@ class InnerTube {
         }
     }
 
-    private fun HttpRequestBuilder.ytClient(client: YouTubeClient, setLogin: Boolean = false) {
+    private fun HttpRequestBuilder.ytClient(
+        client: YouTubeClient,
+        setLogin: Boolean = false,
+        origin: String = YouTubeClient.ORIGIN_YOUTUBE_MUSIC,
+    ) {
         contentType(ContentType.Application.Json)
         headers {
             append("X-Goog-Api-Format-Version", "1")
             append("X-YouTube-Client-Name", client.clientId /* Not a typo. The Client-Name header does contain the client id. */)
             append("X-YouTube-Client-Version", client.clientVersion)
-            append("X-Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
-            append("Referer", YouTubeClient.REFERER_YOUTUBE_MUSIC)
+            append("X-Origin", origin)
+            append("Origin", origin)
+            append("Referer", "$origin/")
             visitorData?.let { append("X-Goog-Visitor-Id", it) }
             if (setLogin && client.loginSupported) {
                 cookie?.let { cookie ->
                     append("cookie", cookie)
                     if ("SAPISID" !in cookieMap) return@let
                     val currentTime = System.currentTimeMillis() / 1000
-                    val sapisidHash = sha1("$currentTime ${cookieMap["SAPISID"]} ${YouTubeClient.ORIGIN_YOUTUBE_MUSIC}")
+                    val sapisidHash = sha1("$currentTime ${cookieMap["SAPISID"]} $origin")
                     append("Authorization", "SAPISIDHASH ${currentTime}_${sapisidHash}")
                 }
             }
@@ -220,9 +225,16 @@ class InnerTube {
         playlistId: String?,
         signatureTimestamp: Int?,
         poToken: String? = null,
+        useMusicEndpoint: Boolean = false,
     ) = withRetry {
-        httpClient.post("player") {
-            ytClient(client, setLogin = true)
+        val origin = if (useMusicEndpoint) {
+            YouTubeClient.ORIGIN_YOUTUBE_MUSIC
+        } else {
+            YouTubeClient.ORIGIN_YOUTUBE
+        }
+        val endpoint = "$origin/youtubei/v1/player"
+        httpClient.post(endpoint) {
+            ytClient(client, setLogin = true, origin = origin)
             setBody(
                 PlayerBody(
                     context = client.toContext(locale, visitorData, dataSyncId).let {
