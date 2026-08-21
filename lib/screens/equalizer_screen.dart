@@ -23,7 +23,10 @@ class EqualizerScreen extends StatelessWidget {
       EqualizerPreset.trebleBoost,
       EqualizerPreset.custom,
     ];
-    final equalizerReady = provider.equalizerSupported && provider.equalizerAttached && provider.equalizerBands.isNotEmpty;
+    final equalizerReady =
+        provider.equalizerSupported &&
+        provider.equalizerAttached &&
+        provider.equalizerBands.isNotEmpty;
     final equalizerActive = equalizerReady && provider.equalizerEnabled;
 
     return Scaffold(
@@ -39,93 +42,113 @@ class EqualizerScreen extends StatelessWidget {
               large: true,
               actions: [
                 OneUi9IconButton(
-                  tooltip: equalizerActive ? t.equalizerStatusActive : t.equalizerStatusOff,
-                  onPressed: provider.equalizerSupported ? () => provider.setEqualizerEnabled(!provider.equalizerEnabled) : null,
-                  icon: equalizerActive ? Icons.equalizer_rounded : Icons.equalizer_outlined,
+                  tooltip: equalizerActive
+                      ? t.equalizerStatusActive
+                      : t.equalizerStatusOff,
+                  onPressed: provider.equalizerSupported
+                      ? () => provider.setEqualizerEnabled(
+                          !provider.equalizerEnabled,
+                        )
+                      : null,
+                  icon: equalizerActive
+                      ? Icons.equalizer_rounded
+                      : Icons.equalizer_outlined,
                   active: equalizerActive,
                 ),
                 OneUi9IconButton(
                   tooltip: t.equalizerReset,
-                  onPressed: provider.equalizerBands.isEmpty ? null : () => provider.resetEqualizer(),
+                  onPressed: provider.equalizerBands.isEmpty
+                      ? null
+                      : () => provider.resetEqualizer(),
                   icon: Icons.restart_alt_rounded,
                 ),
               ],
             ),
             const SizedBox(height: 24),
-          OneUi9Glass(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-            radius: 32,
-            blur: 20,
-            strong: true,
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        equalizerReady
-                            ? (provider.equalizerEnabled ? t.equalizerStatusActive : t.equalizerStatusOff)
-                            : t.equalizerNeedsPlayback,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: equalizerActive ? const Color(0xFFC9D9FF) : secondary,
-                              fontWeight: FontWeight.w700,
-                            ),
+            OneUi9Glass(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+              radius: 32,
+              blur: 20,
+              strong: true,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          equalizerReady
+                              ? (provider.equalizerEnabled
+                                    ? t.equalizerStatusActive
+                                    : t.equalizerStatusOff)
+                              : t.equalizerNeedsPlayback,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: equalizerActive
+                                    ? const Color(0xFFC9D9FF)
+                                    : secondary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
                       ),
-                    ),
-                    if (provider.equalizerAudioSessionId != null)
-                      Text(
-                        '#${provider.equalizerAudioSessionId}',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: secondary),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _EqualizerChart(
-                  bands: provider.equalizerBands,
-                  enabled: equalizerActive,
-                  onChanged: provider.setEqualizerBandLevel,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          if (!provider.equalizerSupported)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                t.equalizerUnsupported,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: secondary, height: 1.35),
-              ),
-            )
-          else if (!equalizerReady)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                t.equalizerNeedsPlayback,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: secondary, height: 1.35),
-              ),
-            )
-          else
-            Wrap(
-              spacing: 14,
-              runSpacing: 14,
-              children: [
-                for (var i = 0; i < presetOrder.length; i++)
-                  _PresetButton(
-                    widthFactor: i == presetOrder.length - 1 ? 0.44 : 0.44,
-                    title: t.labelForEqualizerPreset(presetOrder[i]),
-                    selected: provider.equalizerPreset == presetOrder[i],
-                    onTap: () => provider.applyEqualizerPreset(presetOrder[i]),
+                      if (provider.equalizerAudioSessionId != null)
+                        Text(
+                          '#${provider.equalizerAudioSessionId}',
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(color: secondary),
+                        ),
+                    ],
                   ),
-              ],
+                  const SizedBox(height: 8),
+                  _EqualizerChart(
+                    bands: provider.equalizerBands,
+                    enabled: equalizerActive,
+                    onChanged: provider.setEqualizerBandLevel,
+                  ),
+                ],
+              ),
             ),
-          const SizedBox(height: 18),
-          Text(
-            equalizerReady
-                ? t.descriptionForEqualizerPreset(provider.equalizerPreset)
-                : t.equalizerOnlyAppAudio,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: secondary, height: 1.35),
-          ),
+            const SizedBox(height: 18),
+            if (!provider.equalizerSupported)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  t.equalizerUnsupported,
+                  style: Theme.of(context).textTheme.bodyLarge
+                      ?.copyWith(color: secondary, height: 1.35),
+                ),
+              )
+            else if (!equalizerReady)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  t.equalizerNeedsPlayback,
+                  style: Theme.of(context).textTheme.bodyLarge
+                      ?.copyWith(color: secondary, height: 1.35),
+                ),
+              )
+            else
+              Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  for (var i = 0; i < presetOrder.length; i++)
+                    _PresetButton(
+                      widthFactor: i == presetOrder.length - 1 ? 0.44 : 0.44,
+                      title: t.labelForEqualizerPreset(presetOrder[i]),
+                      selected: provider.equalizerPreset == presetOrder[i],
+                      onTap: () =>
+                          provider.applyEqualizerPreset(presetOrder[i]),
+                    ),
+                ],
+              ),
+            const SizedBox(height: 18),
+            Text(
+              equalizerReady
+                  ? t.descriptionForEqualizerPreset(provider.equalizerPreset)
+                  : t.equalizerOnlyAppAudio,
+              style: Theme.of(context).textTheme.bodyLarge
+                  ?.copyWith(color: secondary, height: 1.35),
+            ),
           ],
         ),
       ),
@@ -225,7 +248,9 @@ class _VerticalBandSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = enabled ? (isDark ? Colors.white70 : Colors.black54) : (isDark ? Colors.white38 : Colors.black26);
+    final textColor = enabled
+        ? (isDark ? Colors.white70 : Colors.black54)
+        : (isDark ? Colors.white38 : Colors.black26);
     final sliderTheme = SliderTheme.of(context).copyWith(
       trackHeight: 4,
       activeTrackColor: activeColor,
@@ -243,10 +268,8 @@ class _VerticalBandSlider extends StatelessWidget {
           child: Center(
             child: Text(
               _topValue(band.level),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: textColor,
-                    fontWeight: FontWeight.w500,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(color: textColor, fontWeight: FontWeight.w500),
             ),
           ),
         ),
@@ -256,7 +279,10 @@ class _VerticalBandSlider extends StatelessWidget {
             child: SliderTheme(
               data: sliderTheme,
               child: Slider(
-                value: band.level.toDouble().clamp(band.minLevel.toDouble(), band.maxLevel.toDouble()),
+                value: band.level.toDouble().clamp(
+                  band.minLevel.toDouble(),
+                  band.maxLevel.toDouble(),
+                ),
                 min: band.minLevel.toDouble(),
                 max: band.maxLevel.toDouble(),
                 onChanged: enabled ? (value) => onChanged(value.round()) : null,
@@ -270,10 +296,8 @@ class _VerticalBandSlider extends StatelessWidget {
           child: Center(
             child: Text(
               _shortLabel(band.label),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: textColor,
-                    fontWeight: FontWeight.w500,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(color: textColor, fontWeight: FontWeight.w500),
             ),
           ),
         ),
@@ -304,9 +328,12 @@ class _PresetButton extends StatelessWidget {
       width: width,
       child: OneUi9Glass(
         radius: 28,
-        blur: 14,
-        showShadow: false,
-        tint: selected ? accent.withOpacity(context.oneUiDark ? 0.25 : 0.14) : null,
+        blur: 26,
+        clear: true,
+        showShadow: true,
+        tint: selected
+            ? accent.withOpacity(context.oneUiDark ? 0.16 : 0.08)
+            : context.oneUiFloatingGlass,
         borderColor: selected ? accent.withOpacity(0.48) : context.oneUiOutline,
         child: Material(
           color: Colors.transparent,
@@ -322,10 +349,10 @@ class _PresetButton extends StatelessWidget {
                     title,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: selected ? accent : null,
-                          fontSize: 20,
-                        ),
+                      fontWeight: FontWeight.w800,
+                      color: selected ? accent : null,
+                      fontSize: 20,
+                    ),
                   ),
                 ),
               ),

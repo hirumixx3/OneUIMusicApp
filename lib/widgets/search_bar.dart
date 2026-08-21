@@ -20,8 +20,10 @@ class MusicSearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     return OneUi9Glass(
       radius: 26,
-      blur: 18,
-      showShadow: false,
+      blur: 28,
+      clear: true,
+      showShadow: true,
+      tint: context.oneUiFloatingGlassStrong,
       child: TextField(
         controller: controller,
         style: Theme.of(context).textTheme.bodyLarge,
@@ -35,9 +37,9 @@ class MusicSearchField extends StatelessWidget {
           prefixIcon: Icon(Icons.search_rounded, color: context.oneUiSecondary),
           hintText: hintText,
           hintStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: context.oneUiSecondary,
-                fontWeight: FontWeight.w500,
-              ),
+            color: context.oneUiSecondary,
+            fontWeight: FontWeight.w500,
+          ),
           contentPadding: const EdgeInsets.symmetric(vertical: 17),
         ),
       ),

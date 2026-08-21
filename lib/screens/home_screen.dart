@@ -17,7 +17,13 @@ import '../widgets/music_list_tile.dart';
 import '../widgets/search_bar.dart';
 import '../models/online_models.dart';
 
-enum HomeMenuAction { sortLaunch, sortAlphabetical, sortArtist, equalizer, about }
+enum HomeMenuAction {
+  sortLaunch,
+  sortAlphabetical,
+  sortArtist,
+  equalizer,
+  about,
+}
 
 Future<void> _runPlaylistActionAfterDialog(
   BuildContext context,
@@ -48,7 +54,9 @@ List<AudioTrack> _playlistCandidateTracks(MusicPlayerProvider provider) {
     ...provider.onlineRecentTracks,
     ...provider.onlineFavoriteTracks,
   ];
-  return source.where((track) => seen.add(track.libraryKey)).toList(growable: false);
+  return source
+      .where((track) => seen.add(track.libraryKey))
+      .toList(growable: false);
 }
 
 Future<void> _showCreatePlaylistDialog(BuildContext context) async {
@@ -75,17 +83,21 @@ Future<void> _showCreatePlaylistDialog(BuildContext context) async {
             },
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(),
+            OneUi9GlassButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext, rootNavigator: true).pop(),
+              compact: true,
               child: Text(t.cancel),
             ),
-            FilledButton(
+            OneUi9GlassButton(
               onPressed: () {
                 final name = controller.text.trim();
                 if (name.isEmpty) return;
                 FocusManager.instance.primaryFocus?.unfocus();
                 Navigator.of(dialogContext, rootNavigator: true).pop(name);
               },
+              compact: true,
+              active: true,
               child: Text(t.create),
             ),
           ],
@@ -104,7 +116,10 @@ Future<void> _showCreatePlaylistDialog(BuildContext context) async {
   );
 }
 
-Future<void> _showRenamePlaylistDialog(BuildContext context, UserPlaylist playlist) async {
+Future<void> _showRenamePlaylistDialog(
+  BuildContext context,
+  UserPlaylist playlist,
+) async {
   final t = AppStrings.of(context);
   final controller = TextEditingController(text: playlist.name);
   String? renamedName;
@@ -127,14 +142,21 @@ Future<void> _showRenamePlaylistDialog(BuildContext context, UserPlaylist playli
           },
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(), child: const Text('Cancelar')),
-          FilledButton(
+          OneUi9GlassButton(
+            onPressed: () =>
+                Navigator.of(dialogContext, rootNavigator: true).pop(),
+            compact: true,
+            child: const Text('Cancelar'),
+          ),
+          OneUi9GlassButton(
             onPressed: () {
               final name = controller.text.trim();
               if (name.isEmpty) return;
               FocusManager.instance.primaryFocus?.unfocus();
-            Navigator.of(dialogContext, rootNavigator: true).pop(name);
+              Navigator.of(dialogContext, rootNavigator: true).pop(name);
             },
+            compact: true,
+            active: true,
             child: Text(t.save),
           ),
         ],
@@ -152,7 +174,10 @@ Future<void> _showRenamePlaylistDialog(BuildContext context, UserPlaylist playli
   );
 }
 
-Future<void> _showAddTracksToPlaylistSheet(BuildContext context, UserPlaylist playlist) async {
+Future<void> _showAddTracksToPlaylistSheet(
+  BuildContext context,
+  UserPlaylist playlist,
+) async {
   final provider = context.read<MusicPlayerProvider>();
   final allTracks = _playlistCandidateTracks(provider);
   final searchController = TextEditingController();
@@ -160,12 +185,14 @@ Future<void> _showAddTracksToPlaylistSheet(BuildContext context, UserPlaylist pl
 
   List<AudioTrack> filteredTracks() {
     final q = query.trim().toLowerCase();
-    final tracks = allTracks.where((track) {
-      if (q.isEmpty) return true;
-      return track.title.toLowerCase().contains(q) ||
-          track.artist.toLowerCase().contains(q) ||
-          track.album.toLowerCase().contains(q);
-    }).toList(growable: false);
+    final tracks = allTracks
+        .where((track) {
+          if (q.isEmpty) return true;
+          return track.title.toLowerCase().contains(q) ||
+              track.artist.toLowerCase().contains(q) ||
+              track.album.toLowerCase().contains(q);
+        })
+        .toList(growable: false);
     return tracks.take(120).toList(growable: false);
   }
 
@@ -191,12 +218,15 @@ Future<void> _showAddTracksToPlaylistSheet(BuildContext context, UserPlaylist pl
                           Expanded(
                             child: Text(
                               'Adicionar músicas a ${playlist.name}',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                           ),
-                          IconButton(
+                          OneUi9IconButton(
                             onPressed: () => Navigator.of(sheetContext).pop(),
-                            icon: const Icon(Icons.close_rounded),
+                            icon: Icons.close_rounded,
+                            size: 40,
+                            iconSize: 21,
                           ),
                         ],
                       ),
@@ -207,28 +237,49 @@ Future<void> _showAddTracksToPlaylistSheet(BuildContext context, UserPlaylist pl
                           prefixIcon: Icon(Icons.search_rounded),
                           hintText: 'Buscar música para adicionar',
                         ),
-                        onChanged: (value) => setSheetState(() => query = value),
+                        onChanged: (value) =>
+                            setSheetState(() => query = value),
                       ),
                       const SizedBox(height: 12),
                       Expanded(
                         child: visible.isEmpty
-                            ? const Center(child: Text('Nenhuma música disponível para adicionar.'))
+                            ? const Center(
+                                child: Text(
+                                  'Nenhuma música disponível para adicionar.',
+                                ),
+                              )
                             : ListView.separated(
                                 itemCount: visible.length,
-                                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 8),
                                 itemBuilder: (context, index) {
                                   final track = visible[index];
-                                  final alreadyAdded = playlist.tracks.any((item) => item.libraryKey == track.libraryKey);
+                                  final alreadyAdded = playlist.tracks.any(
+                                    (item) =>
+                                        item.libraryKey == track.libraryKey,
+                                  );
                                   return MusicListTile(
                                     track: track,
-                                    isDark: Theme.of(context).brightness == Brightness.dark,
+                                    isDark:
+                                        Theme.of(context).brightness ==
+                                        Brightness.dark,
                                     isFavorite: provider.isFavorite(track),
-                                    onFavoriteTap: () => provider.toggleFavorite(track),
+                                    onFavoriteTap: () =>
+                                        provider.toggleFavorite(track),
                                     onTap: () async {
-                                      await provider.addTrackToUserPlaylist(playlist.id, track);
+                                      await provider.addTrackToUserPlaylist(
+                                        playlist.id,
+                                        track,
+                                      );
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('"${track.title}" adicionada à playlist.')),
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              '"${track.title}" adicionada à playlist.',
+                                            ),
+                                          ),
                                         );
                                       }
                                     },
@@ -250,7 +301,6 @@ Future<void> _showAddTracksToPlaylistSheet(BuildContext context, UserPlaylist pl
     searchController.dispose();
   }
 }
-
 
 void _showOnlineAccountSheet(BuildContext context) {
   showModalBottomSheet<void>(
@@ -277,7 +327,7 @@ class _OnlineAccountSheetState extends State<_OnlineAccountSheet> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
-    final isDark   = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final loggedIn = provider.isLoggedIn;
 
     return SafeArea(
@@ -296,7 +346,10 @@ class _OnlineAccountSheetState extends State<_OnlineAccountSheet> {
                     backgroundImage: NetworkImage(provider.accountPhoto),
                   )
                 else
-                  const CircleAvatar(radius: 22, child: Icon(Icons.person_rounded)),
+                  const CircleAvatar(
+                    radius: 22,
+                    child: Icon(Icons.person_rounded),
+                  ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -314,15 +367,19 @@ class _OnlineAccountSheetState extends State<_OnlineAccountSheet> {
                         Text(
                           provider.accountEmail,
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: isDark ? Colors.white54 : Colors.black45),
+                              ?.copyWith(
+                                color: isDark ? Colors.white54 : Colors.black45,
+                              ),
                           overflow: TextOverflow.ellipsis,
                         ),
                     ],
                   ),
                 ),
-                IconButton(
+                OneUi9IconButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
+                  icon: Icons.close_rounded,
+                  size: 40,
+                  iconSize: 21,
                 ),
               ],
             ),
@@ -336,56 +393,59 @@ class _OnlineAccountSheetState extends State<_OnlineAccountSheet> {
                     ?.copyWith(color: isDark ? Colors.white70 : Colors.black54),
               ),
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _loading
-                      ? null
-                      : () async {
-                          setState(() => _loading = true);
-                          Navigator.of(context).pop();
-                          final prov = context.read<MusicPlayerProvider>();
-                          final result = await prov.loginWithGoogle();
-                          if (widget.parentContext.mounted) {
-                            ScaffoldMessenger.of(widget.parentContext).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  result != null
-                                      ? 'Logado como ${result['name'] ?? 'usuário Google'}'
-                                      : 'Login cancelado.',
-                                ),
+              OneUi9GlassButton(
+                expand: true,
+                active: true,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login_rounded),
+                onPressed: _loading
+                    ? null
+                    : () async {
+                        setState(() => _loading = true);
+                        Navigator.of(context).pop();
+                        final prov = context.read<MusicPlayerProvider>();
+                        final result = await prov.loginWithGoogle();
+                        if (widget.parentContext.mounted) {
+                          ScaffoldMessenger.of(
+                            widget.parentContext,
+                          ).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result != null
+                                    ? 'Logado como ${result['name'] ?? 'usuário Google'}'
+                                    : 'Login cancelado.',
                               ),
-                            );
-                          }
-                        },
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.login_rounded),
-                  label: const Text('Entrar com Google'),
-                ),
+                            ),
+                          );
+                        }
+                      },
+                child: const Text('Entrar com Google'),
               ),
             ] else ...[
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _loading
-                      ? null
-                      : () async {
-                          setState(() => _loading = true);
-                          await context.read<MusicPlayerProvider>().logoutGoogle();
-                          if (context.mounted) Navigator.of(context).pop();
-                        },
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.logout_rounded),
-                  label: const Text('Sair da conta'),
-                ),
+              OneUi9GlassButton(
+                expand: true,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.logout_rounded),
+                onPressed: _loading
+                    ? null
+                    : () async {
+                        setState(() => _loading = true);
+                        await context
+                            .read<MusicPlayerProvider>()
+                            .logoutGoogle();
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                child: const Text('Sair da conta'),
               ),
             ],
           ],
@@ -409,9 +469,26 @@ Future<void> _openTrackPlayer(
   );
 
   if (!context.mounted) return;
-  await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const PlayerScreen()),
-  );
+  await Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const PlayerScreen()));
+}
+
+double _localFloatingOverlayPadding(
+  BuildContext context,
+  MusicPlayerProvider provider,
+) {
+  if (MediaQuery.viewInsetsOf(context).bottom > 0) return 16;
+  final systemBottom = MediaQuery.viewPaddingOf(context).bottom;
+  return (provider.currentTrack == null ? 18.0 : 116.0) + systemBottom;
+}
+
+double _onlineFloatingOverlayPadding(
+  BuildContext context,
+  MusicPlayerProvider provider,
+) {
+  if (MediaQuery.viewInsetsOf(context).bottom > 0) return 18;
+  final systemBottom = MediaQuery.viewPaddingOf(context).bottom;
+  return (provider.currentTrack == null ? 88.0 : 184.0) + systemBottom;
 }
 
 class HomeScreen extends StatefulWidget {
@@ -421,21 +498,18 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   int _onlineShellIndex = 0;
 
-  late final TabController _controller = TabController(
-    length: 5,
-    vsync: this,
-    initialIndex: 0,
-  )
-    ..addListener(() {
-      final provider = context.read<MusicPlayerProvider>();
-      final nextTab = LibraryTab.values[_controller.index];
-      if (provider.tab != nextTab) {
-        provider.setTab(nextTab);
-      }
-    });
+  late final TabController _controller =
+      TabController(length: 5, vsync: this, initialIndex: 0)..addListener(() {
+        final provider = context.read<MusicPlayerProvider>();
+        final nextTab = LibraryTab.values[_controller.index];
+        if (provider.tab != nextTab) {
+          provider.setTab(nextTab);
+        }
+      });
 
   @override
   void didChangeDependencies() {
@@ -477,20 +551,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final provider = context.watch<MusicPlayerProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final card = context.oneUiGlass;
-    final subtle = context.oneUiSecondary;
 
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
-    final systemBottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final hasFloatingPlayer = provider.currentTrack != null && !keyboardOpen;
     final onlineMain = provider.tab == LibraryTab.online;
-    final onlineBottomBarHeight = onlineMain ? 72.0 + systemBottomInset : 0.0;
-    final bottomPlayerReserve = keyboardOpen
-        ? 8.0
-        : (hasFloatingPlayer
-            ? (onlineMain ? 151.0 + systemBottomInset : 80.0 + systemBottomInset)
-            : onlineBottomBarHeight);
 
-    if (_controller.index != provider.tab.index && !_controller.indexIsChanging) {
+    if (_controller.index != provider.tab.index &&
+        !_controller.indexIsChanging) {
       _controller.index = provider.tab.index;
     }
 
@@ -498,228 +565,244 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       onWillPop: _handleSystemBack,
       child: Scaffold(
         backgroundColor: Colors.transparent,
-      body: SafeArea(
-        bottom: false,
-        child: Stack(
-          children: [
-            if (onlineMain)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                child: Column(
-                  children: [
-                    _OnlineMainHeader(
-                      shellIndex: _onlineShellIndex,
-                      onSearch: () => setState(() => _onlineShellIndex = 1),
-                      onRefresh: () {
-                        final query = provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text.trim() : '';
-                        provider.searchOnline(forceQuery: query, refresh: true);
-                      },
-                      onOpenAccount: () => _showOnlineAccountSheet(context),
-                      onOpenMenu: () => _showOnlineNavigationSheet(context, provider),
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: KeyedSubtree(
-                        key: ValueKey('online_shell_$_onlineShellIndex'),
-                        child: _OnlineShellBody(
-                          index: _onlineShellIndex,
-                          card: card,
-                          keyboardOpen: keyboardOpen,
-                          onGoHome: () => setState(() => _onlineShellIndex = 0),
-                          onGoSearch: () => setState(() => _onlineShellIndex = 1),
-                          onGoLibrary: () => setState(() => _onlineShellIndex = 2),
-                        ),
+        body: SafeArea(
+          bottom: false,
+          child: Stack(
+            children: [
+              if (onlineMain)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                  child: Column(
+                    children: [
+                      _OnlineMainHeader(
+                        shellIndex: _onlineShellIndex,
+                        onSearch: () => setState(() => _onlineShellIndex = 1),
+                        onRefresh: () {
+                          final query = provider.onlineActiveQuery.isNotEmpty
+                              ? provider.searchController.text.trim()
+                              : '';
+                          provider.searchOnline(
+                            forceQuery: query,
+                            refresh: true,
+                          );
+                        },
+                        onOpenAccount: () => _showOnlineAccountSheet(context),
+                        onOpenMenu: () =>
+                            _showOnlineNavigationSheet(context, provider),
                       ),
-                    ),
-                    SizedBox(height: bottomPlayerReserve),
-                  ],
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'SUA BIBLIOTECA',
-                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                      color: Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.25,
-                                    ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Music',
-                                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                                      fontSize: 40,
-                                      height: 1,
-                                    ),
-                              ),
-                            ],
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: KeyedSubtree(
+                          key: ValueKey('online_shell_$_onlineShellIndex'),
+                          child: _OnlineShellBody(
+                            index: _onlineShellIndex,
+                            card: card,
+                            keyboardOpen: keyboardOpen,
+                            onGoHome: () =>
+                                setState(() => _onlineShellIndex = 0),
+                            onGoSearch: () =>
+                                setState(() => _onlineShellIndex = 1),
+                            onGoLibrary: () =>
+                                setState(() => _onlineShellIndex = 2),
                           ),
                         ),
-                        OneUi9IconButton(
-                          onPressed: provider.scanLibrary,
-                          icon: Icons.refresh_rounded,
-                          tooltip: 'Atualizar biblioteca',
-                        ),
-                        const SizedBox(width: 8),
-                        OneUi9Glass(
-                          radius: 23,
-                          blur: 14,
-                          showShadow: false,
-                          child: SizedBox.square(
-                            dimension: 46,
-                            child: PopupMenuButton<HomeMenuAction>(
-                              tooltip: t.menu,
-                              padding: EdgeInsets.zero,
-                              icon: const Icon(Icons.more_horiz_rounded),
-                              onSelected: (value) {
-                                switch (value) {
-                                  case HomeMenuAction.sortLaunch:
-                                    provider.setSortMode(SortMode.launch);
-                                    break;
-                                  case HomeMenuAction.sortAlphabetical:
-                                    provider.setSortMode(SortMode.alphabetical);
-                                    break;
-                                  case HomeMenuAction.sortArtist:
-                                    provider.setSortMode(SortMode.artist);
-                                    break;
-                                  case HomeMenuAction.equalizer:
-                                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()));
-                                    break;
-                                  case HomeMenuAction.about:
-                                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()));
-                                    break;
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                PopupMenuItem(value: HomeMenuAction.sortLaunch, child: Text(t.sortRelease)),
-                                PopupMenuItem(value: HomeMenuAction.sortAlphabetical, child: Text(t.sortAlphabetical)),
-                                PopupMenuItem(value: HomeMenuAction.sortArtist, child: Text(t.sortByArtist)),
-                                const PopupMenuDivider(),
-                                PopupMenuItem(value: HomeMenuAction.equalizer, child: Text(t.equalizer)),
-                                PopupMenuItem(value: HomeMenuAction.about, child: Text(t.aboutApp)),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                  child: Column(
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'SUA BIBLIOTECA',
+                                  style: Theme.of(context).textTheme.labelLarge
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.25,
+                                      ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Music',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .displaySmall
+                                      ?.copyWith(fontSize: 40, height: 1),
+                                ),
                               ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    MusicSearchField(
-                      controller: provider.searchController,
-                      isDark: isDark,
-                      hintText: t.searchHint,
-                    ),
-                    const SizedBox(height: 12),
-                    OneUi9Glass(
-                      radius: 25,
-                      blur: 16,
-                      showShadow: false,
-                      child: SizedBox(
-                        height: 50,
-                        child: TabBar(
-                          controller: _controller,
-                          isScrollable: true,
-                          tabAlignment: TabAlignment.start,
-                          indicatorSize: TabBarIndicatorSize.tab,
-                          indicatorPadding: const EdgeInsets.all(4),
-                          indicator: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(isDark ? 0.24 : 0.14),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+                          OneUi9IconButton(
+                            onPressed: provider.scanLibrary,
+                            icon: Icons.refresh_rounded,
+                            tooltip: 'Atualizar biblioteca',
+                          ),
+                          const SizedBox(width: 8),
+                          OneUi9Glass(
+                            radius: 23,
+                            blur: 20,
+                            showShadow: true,
+                            clear: true,
+                            tint: context.oneUiFloatingGlass,
+                            child: SizedBox.square(
+                              dimension: 46,
+                              child: PopupMenuButton<HomeMenuAction>(
+                                tooltip: t.menu,
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.more_horiz_rounded),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  side: BorderSide.none,
+                                ),
+                                onSelected: (value) {
+                                  switch (value) {
+                                    case HomeMenuAction.sortLaunch:
+                                      provider.setSortMode(SortMode.launch);
+                                      break;
+                                    case HomeMenuAction.sortAlphabetical:
+                                      provider.setSortMode(
+                                        SortMode.alphabetical,
+                                      );
+                                      break;
+                                    case HomeMenuAction.sortArtist:
+                                      provider.setSortMode(SortMode.artist);
+                                      break;
+                                    case HomeMenuAction.equalizer:
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const EqualizerScreen(),
+                                        ),
+                                      );
+                                      break;
+                                    case HomeMenuAction.about:
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const AboutAppScreen(),
+                                        ),
+                                      );
+                                      break;
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    value: HomeMenuAction.sortLaunch,
+                                    child: Text(t.sortRelease),
+                                  ),
+                                  PopupMenuItem(
+                                    value: HomeMenuAction.sortAlphabetical,
+                                    child: Text(t.sortAlphabetical),
+                                  ),
+                                  PopupMenuItem(
+                                    value: HomeMenuAction.sortArtist,
+                                    child: Text(t.sortByArtist),
+                                  ),
+                                  const PopupMenuDivider(),
+                                  PopupMenuItem(
+                                    value: HomeMenuAction.equalizer,
+                                    child: Text(t.equalizer),
+                                  ),
+                                  PopupMenuItem(
+                                    value: HomeMenuAction.about,
+                                    child: Text(t.aboutApp),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-                          labelStyle: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
-                          unselectedLabelStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                color: subtle,
-                                fontWeight: FontWeight.w700,
-                              ),
-                          tabs: [
-                            Tab(text: t.tracks),
-                            Tab(text: t.albums),
-                            Tab(text: t.artists),
-                            Tab(text: t.favorites),
-                            Tab(text: t.online),
-                          ],
-                        ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    Expanded(
-                      child: (provider.isLoading && provider.tracks.isEmpty)
-                          ? const Center(child: CircularProgressIndicator())
-                          : (provider.error != null && provider.tracks.isEmpty)
-                              ? _EmptyState(message: provider.error!)
-                              : KeyedSubtree(
-                                  key: ValueKey(provider.tab),
-                                  child: _CurrentLibraryView(card: card, keyboardOpen: keyboardOpen),
+                      const SizedBox(height: 18),
+                      MusicSearchField(
+                        controller: provider.searchController,
+                        isDark: isDark,
+                        hintText: t.searchHint,
+                      ),
+                      const SizedBox(height: 12),
+                      _FloatingLibraryTabs(
+                        controller: _controller,
+                        labels: [
+                          t.tracks,
+                          t.albums,
+                          t.artists,
+                          t.favorites,
+                          t.online,
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Expanded(
+                        child: (provider.isLoading && provider.tracks.isEmpty)
+                            ? const Center(child: CircularProgressIndicator())
+                            : (provider.error != null &&
+                                  provider.tracks.isEmpty)
+                            ? _EmptyState(message: provider.error!)
+                            : KeyedSubtree(
+                                key: ValueKey(provider.tab),
+                                child: _CurrentLibraryView(
+                                  card: card,
+                                  keyboardOpen: keyboardOpen,
                                 ),
-                    ),
-                    SizedBox(
-                      height: keyboardOpen
-                          ? 12
-                          : (hasFloatingPlayer ? 80 + systemBottomInset : 12),
-                    ),
-                  ],
-                ),
-              ),
-            if (!keyboardOpen && !onlineMain)
-              const Align(
-                alignment: Alignment.bottomCenter,
-                child: FloatingPlayerBar(),
-              ),
-            if (onlineMain)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SafeArea(
-                  top: false,
-                  minimum: const EdgeInsets.only(bottom: 7),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (!keyboardOpen && hasFloatingPlayer) ...[
-                        const FloatingPlayerBar(
-                          metrolistStyle: true,
-                          embedded: true,
-                        ),
-                        const SizedBox(height: 7),
-                      ],
-                      _MetrolistBottomNavigation(
-                        selectedIndex: _onlineShellIndex,
-                        onSelected: (index) async {
-                          if (index == 0) {
-                            await provider.clearOnlineQuery(reloadHome: true);
-                            provider.setOnlineSectionIndex(0);
-                          }
-                          setState(() => _onlineShellIndex = index);
-                        },
+                              ),
                       ),
                     ],
                   ),
                 ),
-              ),
-          ],
+              if (!keyboardOpen && !onlineMain)
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FloatingPlayerBar(),
+                ),
+              if (onlineMain)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    minimum: const EdgeInsets.only(bottom: 7),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!keyboardOpen && hasFloatingPlayer) ...[
+                          const FloatingPlayerBar(
+                            metrolistStyle: true,
+                            embedded: true,
+                          ),
+                          const SizedBox(height: 7),
+                        ],
+                        _MetrolistBottomNavigation(
+                          selectedIndex: _onlineShellIndex,
+                          onSelected: (index) async {
+                            if (index == 0) {
+                              await provider.clearOnlineQuery(reloadHome: true);
+                              provider.setOnlineSectionIndex(0);
+                            }
+                            setState(() => _onlineShellIndex = index);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
-
-
 
   @override
   void dispose() {
@@ -728,17 +811,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 }
 
-
-void _showOnlineNavigationSheet(BuildContext context, MusicPlayerProvider provider) {
+void _showOnlineNavigationSheet(
+  BuildContext context,
+  MusicPlayerProvider provider,
+) {
   final t = AppStrings.of(context);
   showModalBottomSheet<void>(
     context: context,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
     builder: (sheetContext) {
       Widget item(IconData icon, String label, VoidCallback onTap) {
         return ListTile(
           leading: Icon(icon),
-          title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          title: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
           onTap: () {
             Navigator.of(sheetContext).pop();
             onTap();
@@ -755,14 +845,46 @@ void _showOnlineNavigationSheet(BuildContext context, MusicPlayerProvider provid
             children: [
               const OneUi9SheetHandle(),
               const SizedBox(height: 12),
-              item(Icons.library_music_rounded, t.tracks, () => provider.setTab(LibraryTab.tracks)),
-              item(Icons.album_rounded, t.albums, () => provider.setTab(LibraryTab.albums)),
-              item(Icons.person_rounded, t.artists, () => provider.setTab(LibraryTab.artists)),
-              item(Icons.favorite_rounded, t.favorites, () => provider.setTab(LibraryTab.favorites)),
+              item(
+                Icons.library_music_rounded,
+                t.tracks,
+                () => provider.setTab(LibraryTab.tracks),
+              ),
+              item(
+                Icons.album_rounded,
+                t.albums,
+                () => provider.setTab(LibraryTab.albums),
+              ),
+              item(
+                Icons.person_rounded,
+                t.artists,
+                () => provider.setTab(LibraryTab.artists),
+              ),
+              item(
+                Icons.favorite_rounded,
+                t.favorites,
+                () => provider.setTab(LibraryTab.favorites),
+              ),
               const Divider(),
-              item(Icons.history_rounded, 'Histórico online', () => provider.setOnlineSectionIndex(4)),
-              item(Icons.equalizer_rounded, t.equalizer, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen()))),
-              item(Icons.info_outline_rounded, t.aboutApp, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutAppScreen()))),
+              item(
+                Icons.history_rounded,
+                'Histórico online',
+                () => provider.setOnlineSectionIndex(4),
+              ),
+              item(
+                Icons.equalizer_rounded,
+                t.equalizer,
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                ),
+              ),
+              item(
+                Icons.info_outline_rounded,
+                t.aboutApp,
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AboutAppScreen()),
+                ),
+              ),
             ],
           ),
         ),
@@ -773,12 +895,18 @@ void _showOnlineNavigationSheet(BuildContext context, MusicPlayerProvider provid
 
 Future<void> _showOnlineSearchSheet(BuildContext context) async {
   final provider = context.read<MusicPlayerProvider>();
-  final controller = TextEditingController(text: provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text : '');
+  final controller = TextEditingController(
+    text: provider.onlineActiveQuery.isNotEmpty
+        ? provider.searchController.text
+        : '',
+  );
   try {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (sheetContext) {
         final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
         return SafeArea(
@@ -811,23 +939,22 @@ Future<void> _showOnlineSearchSheet(BuildContext context) async {
                   },
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      final query = controller.text.trim();
-                      provider.searchController.text = query;
-                      provider.setOnlineSectionIndex(0);
-                      if (query.isEmpty) {
-                        provider.clearOnlineQuery();
-                      } else {
-                        provider.searchOnline(forceQuery: query, refresh: true);
-                      }
-                      Navigator.of(sheetContext).pop();
-                    },
-                    icon: const Icon(Icons.search_rounded),
-                    label: const Text('Pesquisar'),
-                  ),
+                OneUi9GlassButton(
+                  expand: true,
+                  active: true,
+                  icon: const Icon(Icons.search_rounded),
+                  onPressed: () {
+                    final query = controller.text.trim();
+                    provider.searchController.text = query;
+                    provider.setOnlineSectionIndex(0);
+                    if (query.isEmpty) {
+                      provider.clearOnlineQuery();
+                    } else {
+                      provider.searchOnline(forceQuery: query, refresh: true);
+                    }
+                    Navigator.of(sheetContext).pop();
+                  },
+                  child: const Text('Pesquisar'),
                 ),
               ],
             ),
@@ -879,21 +1006,22 @@ class _OnlineMainHeader extends StatelessWidget {
               Text(
                 'ONLINE',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.25,
-                    ),
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.25,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
-                shellIndex == 1 ? 'Pesquisar' : shellIndex == 2 ? 'Biblioteca' : 'Início',
+                shellIndex == 1
+                    ? 'Pesquisar'
+                    : shellIndex == 2
+                    ? 'Biblioteca'
+                    : 'Início',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                      fontSize: 32,
-                      height: 1,
-                      color: foreground,
-                    ),
+                style: Theme.of(context).textTheme.headlineLarge
+                    ?.copyWith(fontSize: 32, height: 1, color: foreground),
               ),
             ],
           ),
@@ -907,8 +1035,10 @@ class _OnlineMainHeader extends StatelessWidget {
             padding: const EdgeInsets.only(left: 6),
             child: OneUi9Glass(
               radius: 20,
-              blur: 14,
-              showShadow: false,
+              blur: 20,
+              showShadow: true,
+              clear: true,
+              tint: context.oneUiFloatingGlass,
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: onOpenAccount,
@@ -917,11 +1047,18 @@ class _OnlineMainHeader extends StatelessWidget {
                   child: CircleAvatar(
                     radius: 17,
                     backgroundColor: OneUi9.accent,
-                    backgroundImage: provider.accountPhoto.trim().isNotEmpty ? NetworkImage(provider.accountPhoto) : null,
+                    backgroundImage: provider.accountPhoto.trim().isNotEmpty
+                        ? NetworkImage(provider.accountPhoto)
+                        : null,
                     child: provider.accountPhoto.trim().isEmpty
                         ? Text(
-                            provider.accountName.trim().isNotEmpty ? provider.accountName.trim()[0].toUpperCase() : 'U',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                            provider.accountName.trim().isNotEmpty
+                                ? provider.accountName.trim()[0].toUpperCase()
+                                : 'U',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                            ),
                           )
                         : null,
                   ),
@@ -932,7 +1069,11 @@ class _OnlineMainHeader extends StatelessWidget {
         else
           Padding(
             padding: const EdgeInsets.only(left: 6),
-            child: iconButton(Icons.person_outline_rounded, onOpenAccount ?? onOpenMenu, tooltip: 'Conta'),
+            child: iconButton(
+              Icons.person_outline_rounded,
+              onOpenAccount ?? onOpenMenu,
+              tooltip: 'Conta',
+            ),
           ),
         const SizedBox(width: 6),
         iconButton(Icons.more_horiz_rounded, onOpenMenu, tooltip: 'Menu'),
@@ -966,8 +1107,6 @@ class _CurrentLibraryView extends StatelessWidget {
   }
 }
 
-
-
 List<Widget> _metrolistSongRailSlivers({
   required BuildContext context,
   required String title,
@@ -983,7 +1122,8 @@ List<Widget> _metrolistSongRailSlivers({
       child: _YoutubeSectionHeader(
         title: title,
         actionLabel: 'Reproduzir tudo',
-        onActionTap: () => _openTrackPlayer(context, visible.first, queue: songs),
+        onActionTap: () =>
+            _openTrackPlayer(context, visible.first, queue: songs),
       ),
     ),
     SliverToBoxAdapter(
@@ -1023,7 +1163,9 @@ List<Widget> _metrolistPlaylistRailSlivers({
   if (visible.isEmpty) return const <Widget>[];
   return <Widget>[
     const SliverToBoxAdapter(child: SizedBox(height: 26)),
-    SliverToBoxAdapter(child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo')),
+    SliverToBoxAdapter(
+      child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo'),
+    ),
     SliverToBoxAdapter(
       child: SizedBox(
         height: 206,
@@ -1040,7 +1182,11 @@ List<Widget> _metrolistPlaylistRailSlivers({
                 title: playlist.title,
                 subtitle: playlist.author,
                 imageUrl: playlist.thumbnailUrl,
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist))),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OnlinePlaylistScreen(playlist: playlist),
+                  ),
+                ),
               ),
             );
           },
@@ -1061,7 +1207,9 @@ List<Widget> _metrolistAlbumRailSlivers({
   if (visible.isEmpty) return const <Widget>[];
   return <Widget>[
     const SliverToBoxAdapter(child: SizedBox(height: 26)),
-    SliverToBoxAdapter(child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo')),
+    SliverToBoxAdapter(
+      child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo'),
+    ),
     SliverToBoxAdapter(
       child: SizedBox(
         height: 222,
@@ -1076,7 +1224,11 @@ List<Widget> _metrolistAlbumRailSlivers({
               width: 152,
               child: _OnlineAlbumCard(
                 album: album,
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineAlbumScreen(album: album))),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OnlineAlbumScreen(album: album),
+                  ),
+                ),
               ),
             );
           },
@@ -1117,6 +1269,72 @@ class _OnlineShellBody extends StatelessWidget {
   }
 }
 
+class _FloatingLibraryTabs extends StatelessWidget {
+  const _FloatingLibraryTabs({required this.controller, required this.labels});
+
+  final TabController controller;
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return SizedBox(
+      height: 54,
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+            itemCount: labels.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (context, index) {
+              final selected = controller.index == index;
+              final label = Text(
+                labels[index],
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: selected ? accent : context.oneUiSecondary,
+                  fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                ),
+              );
+
+              if (selected) {
+                return OneUi9GlassButton(
+                  onPressed: () => controller.animateTo(index),
+                  active: true,
+                  compact: true,
+                  radius: 22,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 9,
+                  ),
+                  child: label,
+                );
+              }
+
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () => controller.animateTo(index),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 11,
+                    ),
+                    child: label,
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _MetrolistBottomNavigation extends StatelessWidget {
   const _MetrolistBottomNavigation({
     required this.selectedIndex,
@@ -1132,40 +1350,35 @@ class _MetrolistBottomNavigation extends StatelessWidget {
     final unselected = context.oneUiSecondary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: OneUi9Glass(
-        radius: 30,
-        blur: 28,
-        strong: true,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            children: [
-              _MetrolistNavItem(
-                icon: Icons.home_rounded,
-                label: 'Início',
-                selected: selectedIndex == 0,
-                selectedColor: selected,
-                unselectedColor: unselected,
-                onTap: () => onSelected(0),
-              ),
-              _MetrolistNavItem(
-                icon: Icons.search_rounded,
-                label: 'Pesquisar',
-                selected: selectedIndex == 1,
-                selectedColor: selected,
-                unselectedColor: unselected,
-                onTap: () => onSelected(1),
-              ),
-              _MetrolistNavItem(
-                icon: Icons.library_music_rounded,
-                label: 'Biblioteca',
-                selected: selectedIndex == 2,
-                selectedColor: selected,
-                unselectedColor: unselected,
-                onTap: () => onSelected(2),
-              ),
-            ],
-          ),
+      child: SizedBox(
+        height: 66,
+        child: Row(
+          children: [
+            _MetrolistNavItem(
+              icon: Icons.home_rounded,
+              label: 'Início',
+              selected: selectedIndex == 0,
+              selectedColor: selected,
+              unselectedColor: unselected,
+              onTap: () => onSelected(0),
+            ),
+            _MetrolistNavItem(
+              icon: Icons.search_rounded,
+              label: 'Pesquisar',
+              selected: selectedIndex == 1,
+              selectedColor: selected,
+              unselectedColor: unselected,
+              onTap: () => onSelected(1),
+            ),
+            _MetrolistNavItem(
+              icon: Icons.library_music_rounded,
+              label: 'Biblioteca',
+              selected: selectedIndex == 2,
+              selectedColor: selected,
+              unselectedColor: unselected,
+              onTap: () => onSelected(2),
+            ),
+          ],
         ),
       ),
     );
@@ -1193,30 +1406,37 @@ class _MetrolistNavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = selected ? selectedColor : unselectedColor;
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-              decoration: BoxDecoration(
-                color: selected ? selectedColor.withOpacity(0.18) : Colors.transparent,
-                borderRadius: BorderRadius.circular(22),
-                border: selected ? Border.all(color: selectedColor.withOpacity(0.22)) : null,
-              ),
-              child: Icon(icon, color: color, size: 25),
-            ),
-            const SizedBox(height: 1),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: OneUi9Glass(
+          radius: 23,
+          blur: 26,
+          clear: true,
+          showShadow: true,
+          tint: selected
+              ? selectedColor.withOpacity(context.oneUiDark ? 0.16 : 0.08)
+              : context.oneUiFloatingGlass,
+          borderColor: selected
+              ? selectedColor.withOpacity(0.42)
+              : context.oneUiOutline.withOpacity(0.72),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(23),
+            onTap: onTap,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: color, size: 25),
+                const SizedBox(height: 1),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: color,
                     fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                   ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1239,7 +1459,7 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    const bottomPadding = 12.0;
+    final bottomPadding = _onlineFloatingOverlayPadding(context, provider);
     final active = provider.onlineActiveQuery.isNotEmpty;
     final songs = provider.onlineDisplaySongs;
     final albums = provider.onlineDisplayAlbums;
@@ -1259,7 +1479,9 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
           onSubmitted: (query) {
             final cleaned = query.trim();
             provider.searchController.text = cleaned;
-            provider.searchController.selection = TextSelection.collapsed(offset: cleaned.length);
+            provider.searchController.selection = TextSelection.collapsed(
+              offset: cleaned.length,
+            );
             provider.setOnlineSectionIndex(0);
             if (cleaned.isEmpty) {
               provider.clearOnlineQuery(reloadHome: false);
@@ -1274,10 +1496,22 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
           height: 42,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: const ['Tudo', 'Músicas', 'Álbuns', 'Artistas', 'Playlists'].length,
+            itemCount: const [
+              'Tudo',
+              'Músicas',
+              'Álbuns',
+              'Artistas',
+              'Playlists',
+            ].length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
-              final labels = const ['Tudo', 'Músicas', 'Álbuns', 'Artistas', 'Playlists'];
+              final labels = const [
+                'Tudo',
+                'Músicas',
+                'Álbuns',
+                'Artistas',
+                'Playlists',
+              ];
               return _YoutubeMusicChip(
                 label: labels[index],
                 selected: _filterIndex == index,
@@ -1290,183 +1524,244 @@ class _OnlineSearchTabState extends State<_OnlineSearchTab> {
         Expanded(
           child: NotificationListener<ScrollNotification>(
             onNotification: (notification) {
-              if (active && showSongs && notification.metrics.pixels >= notification.metrics.maxScrollExtent - 700) {
+              if (active &&
+                  showSongs &&
+                  notification.metrics.pixels >=
+                      notification.metrics.maxScrollExtent - 700) {
                 context.read<MusicPlayerProvider>().loadMoreOnlineSongs();
               }
               return false;
             },
             child: CustomScrollView(
               slivers: [
-              if (!active) ...[
-                if (searchHistory.isNotEmpty) ...[
-                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Histórico de pesquisa')),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
+                if (!active) ...[
+                  if (searchHistory.isNotEmpty) ...[
+                    const SliverToBoxAdapter(
+                      child: _YoutubeSectionHeader(
+                        title: 'Histórico de pesquisa',
+                      ),
+                    ),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
                         final term = searchHistory[index];
                         return _OnlineSearchHistoryRow(
                           label: term,
                           onTap: () {
                             provider.searchController.text = term;
-                            provider.searchController.selection = TextSelection.collapsed(offset: term.length);
-                            provider.searchOnline(forceQuery: term, refresh: true);
+                            provider.searchController.selection =
+                                TextSelection.collapsed(offset: term.length);
+                            provider.searchOnline(
+                              forceQuery: term,
+                              refresh: true,
+                            );
                           },
                         );
-                      },
-                      childCount: searchHistory.length,
+                      }, childCount: searchHistory.length),
                     ),
-                  ),
-                ],
-                if (historyTracks.isNotEmpty) ...[
-                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Ouvir de novo')),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, rawIndex) {
-                        if (rawIndex.isOdd) return const SizedBox(height: 6);
-                        final index = rawIndex ~/ 2;
-                        final track = historyTracks[index];
-                        return _YoutubeSongRow(
-                          track: track,
-                          isFavorite: provider.isFavorite(track),
-                          onTap: () => _openTrackPlayer(context, track, queue: historyTracks),
-                          onFavoriteTap: () => provider.toggleFavorite(track),
-                        );
-                      },
-                      childCount: (historyTracks.take(8).length * 2 - 1).clamp(0, 99).toInt(),
+                  ],
+                  if (historyTracks.isNotEmpty) ...[
+                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                    const SliverToBoxAdapter(
+                      child: _YoutubeSectionHeader(title: 'Ouvir de novo'),
                     ),
-                  ),
-                ],
-                if (searchHistory.isEmpty && historyTracks.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(message: 'Pesquise músicas, artistas, álbuns e playlists online.'),
-                  ),
-              ] else ...[
-                if (provider.isOnlineLoading && songs.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty)
-                  const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator())),
-                if (showSongs && songs.isNotEmpty) ...[
-                  SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Músicas')),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, rawIndex) {
-                        if (rawIndex.isOdd) return const SizedBox(height: 6);
-                        final index = rawIndex ~/ 2;
-                        final track = songs[index];
-                        return _YoutubeSongRow(
-                          track: track,
-                          isFavorite: provider.isFavorite(track),
-                          onTap: () => _openTrackPlayer(context, track, queue: songs),
-                          onFavoriteTap: () => provider.toggleFavorite(track),
-                        );
-                      },
-                      childCount: (songs.length * 2 - 1).clamp(0, 9999).toInt(),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, rawIndex) {
+                          if (rawIndex.isOdd) return const SizedBox(height: 6);
+                          final index = rawIndex ~/ 2;
+                          final track = historyTracks[index];
+                          return _YoutubeSongRow(
+                            track: track,
+                            isFavorite: provider.isFavorite(track),
+                            onTap: () => _openTrackPlayer(
+                              context,
+                              track,
+                              queue: historyTracks,
+                            ),
+                            onFavoriteTap: () => provider.toggleFavorite(track),
+                          );
+                        },
+                        childCount: (historyTracks.take(8).length * 2 - 1)
+                            .clamp(0, 99)
+                            .toInt(),
+                      ),
                     ),
-                  ),
-                  if (active && (provider.isLoadingMoreOnlineSongs || provider.hasMoreOnlineSongs))
+                  ],
+                  if (searchHistory.isEmpty && historyTracks.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyState(
+                        message: 'Pesquise músicas, artistas, álbuns e playlists online.',
+                      ),
+                    ),
+                ] else ...[
+                  if (provider.isOnlineLoading &&
+                      songs.isEmpty &&
+                      albums.isEmpty &&
+                      artists.isEmpty &&
+                      playlists.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  if (showSongs && songs.isNotEmpty) ...[
                     SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: provider.isLoadingMoreOnlineSongs
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(strokeWidth: 2.4),
-                                )
-                              : TextButton.icon(
-                                  onPressed: () => provider.loadMoreOnlineSongs(),
-                                  icon: const Icon(Icons.expand_more_rounded),
-                                  label: const Text('Carregar mais músicas'),
+                      child: _YoutubeSectionHeader(title: 'Músicas'),
+                    ),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, rawIndex) {
+                          if (rawIndex.isOdd) return const SizedBox(height: 6);
+                          final index = rawIndex ~/ 2;
+                          final track = songs[index];
+                          return _YoutubeSongRow(
+                            track: track,
+                            isFavorite: provider.isFavorite(track),
+                            onTap: () =>
+                                _openTrackPlayer(context, track, queue: songs),
+                            onFavoriteTap: () => provider.toggleFavorite(track),
+                          );
+                        },
+                        childCount: (songs.length * 2 - 1)
+                            .clamp(0, 9999)
+                            .toInt(),
+                      ),
+                    ),
+                    if (active &&
+                        (provider.isLoadingMoreOnlineSongs ||
+                            provider.hasMoreOnlineSongs))
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: provider.isLoadingMoreOnlineSongs
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.4,
+                                    ),
+                                  )
+                                : OneUi9GlassButton(
+                                    onPressed: () =>
+                                        provider.loadMoreOnlineSongs(),
+                                    icon: const Icon(Icons.expand_more_rounded),
+                                    compact: true,
+                                    child: const Text('Carregar mais músicas'),
+                                  ),
+                          ),
+                        ),
+                      ),
+                  ],
+                  if (showAlbums && albums.isNotEmpty) ...[
+                    const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                    const SliverToBoxAdapter(
+                      child: _YoutubeSectionHeader(title: 'Álbuns'),
+                    ),
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 205,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: albums.take(12).length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 12),
+                          itemBuilder: (context, index) {
+                            final album = albums[index];
+                            return SizedBox(
+                              width: 145,
+                              child: _OnlineAlbumCard(
+                                album: album,
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        OnlineAlbumScreen(album: album),
+                                  ),
                                 ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
-                ],
-                if (showAlbums && albums.isNotEmpty) ...[
-                  const SliverToBoxAdapter(child: SizedBox(height: 22)),
-                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Álbuns')),
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 205,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: albums.take(12).length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 12),
-                        itemBuilder: (context, index) {
-                          final album = albums[index];
-                          return SizedBox(
-                            width: 145,
-                            child: _OnlineAlbumCard(
-                              album: album,
-                              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineAlbumScreen(album: album))),
-                            ),
-                          );
-                        },
-                      ),
+                  ],
+                  if (showArtists && artists.isNotEmpty) ...[
+                    const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                    const SliverToBoxAdapter(
+                      child: _YoutubeSectionHeader(title: 'Artistas'),
                     ),
-                  ),
-                ],
-                if (showArtists && artists.isNotEmpty) ...[
-                  const SliverToBoxAdapter(child: SizedBox(height: 22)),
-                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Artistas')),
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 160,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: artists.take(12).length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 14),
-                        itemBuilder: (context, index) => _YoutubeArtistBubble(
-                          artist: artists[index],
-                          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineArtistScreen(artist: artists[index]))),
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 160,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: artists.take(12).length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 14),
+                          itemBuilder: (context, index) => _YoutubeArtistBubble(
+                            artist: artists[index],
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    OnlineArtistScreen(artist: artists[index]),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-                if (showPlaylists && playlists.isNotEmpty) ...[
-                  const SliverToBoxAdapter(child: SizedBox(height: 22)),
-                  const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Playlists')),
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 190,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: playlists.take(12).length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 12),
-                        itemBuilder: (context, index) {
-                          final playlist = playlists[index];
-                          return SizedBox(
-                            width: 142,
-                            child: _YoutubeMusicTile(
-                              title: playlist.title,
-                              subtitle: playlist.author,
-                              imageUrl: playlist.thumbnailUrl,
-                              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist))),
-                            ),
-                          );
-                        },
+                  ],
+                  if (showPlaylists && playlists.isNotEmpty) ...[
+                    const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                    const SliverToBoxAdapter(
+                      child: _YoutubeSectionHeader(title: 'Playlists'),
+                    ),
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 190,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: playlists.take(12).length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 12),
+                          itemBuilder: (context, index) {
+                            final playlist = playlists[index];
+                            return SizedBox(
+                              width: 142,
+                              child: _YoutubeMusicTile(
+                                title: playlist.title,
+                                subtitle: playlist.author,
+                                imageUrl: playlist.thumbnailUrl,
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => OnlinePlaylistScreen(
+                                      playlist: playlist,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                ],
-                if (!provider.isOnlineLoading &&
-                    ((showSongs && songs.isNotEmpty) ||
-                            (showAlbums && albums.isNotEmpty) ||
-                            (showArtists && artists.isNotEmpty) ||
-                            (showPlaylists && playlists.isNotEmpty)) ==
-                        false)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(
-                      message: _filterIndex == 0
-                          ? 'Nenhum resultado encontrado.'
-                          : 'Nenhum resultado nesse filtro.',
+                  ],
+                  if (!provider.isOnlineLoading &&
+                      ((showSongs && songs.isNotEmpty) ||
+                              (showAlbums && albums.isNotEmpty) ||
+                              (showArtists && artists.isNotEmpty) ||
+                              (showPlaylists && playlists.isNotEmpty)) ==
+                          false)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyState(
+                        message: _filterIndex == 0
+                            ? 'Nenhum resultado encontrado.'
+                            : 'Nenhum resultado nesse filtro.',
+                      ),
                     ),
-                  ),
-              ],
-              SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
+                ],
+                SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
               ],
             ),
           ),
@@ -1486,13 +1781,20 @@ class _OnlineSearchHistoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return OneUi9Glass(
       radius: 22,
-      blur: 10,
-      showShadow: false,
+      blur: 24,
+      clear: true,
+      showShadow: true,
+      tint: context.oneUiFloatingGlass,
       margin: const EdgeInsets.only(bottom: 7),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14),
         leading: Icon(Icons.history_rounded, color: context.oneUiSecondary),
-        title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         trailing: const Icon(Icons.north_west_rounded, size: 20),
         onTap: onTap,
       ),
@@ -1509,7 +1811,7 @@ class _OnlineLibraryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MusicPlayerProvider>();
-    const bottomPadding = 12.0;
+    final bottomPadding = _onlineFloatingOverlayPadding(context, provider);
     final favorites = provider.onlineFavoriteTracks;
     final history = provider.onlineHistoryTracks;
     final playlists = provider.userPlaylists;
@@ -1523,12 +1825,25 @@ class _OnlineLibraryTab extends StatelessWidget {
                 CircleAvatar(
                   radius: 28,
                   backgroundColor: const Color(0xFF78A33E),
-                  backgroundImage: provider.isLoggedIn && provider.accountPhoto.trim().isNotEmpty ? NetworkImage(provider.accountPhoto) : null,
-                  child: provider.isLoggedIn && provider.accountPhoto.trim().isNotEmpty
+                  backgroundImage:
+                      provider.isLoggedIn &&
+                          provider.accountPhoto.trim().isNotEmpty
+                      ? NetworkImage(provider.accountPhoto)
+                      : null,
+                  child:
+                      provider.isLoggedIn &&
+                          provider.accountPhoto.trim().isNotEmpty
                       ? null
                       : Text(
-                          provider.isLoggedIn && provider.accountName.trim().isNotEmpty ? provider.accountName.trim()[0].toUpperCase() : 'H',
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: Colors.white),
+                          provider.isLoggedIn &&
+                                  provider.accountName.trim().isNotEmpty
+                              ? provider.accountName.trim()[0].toUpperCase()
+                              : 'H',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 24,
+                            color: Colors.white,
+                          ),
                         ),
                 ),
                 const SizedBox(width: 14),
@@ -1536,8 +1851,16 @@ class _OnlineLibraryTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('HIRUMISU', style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900)),
-                      Text('Biblioteca online', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      Text(
+                        'HIRUMISU',
+                        style: Theme.of(context).textTheme.labelLarge
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        'Biblioteca online',
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
                     ],
                   ),
                 ),
@@ -1579,7 +1902,8 @@ class _OnlineLibraryTab extends StatelessWidget {
             child: _YoutubeSectionHeader(
               title: 'Ouvir de novo',
               actionLabel: 'Reproduzir tudo',
-              onActionTap: () => _openTrackPlayer(context, history.first, queue: history),
+              onActionTap: () =>
+                  _openTrackPlayer(context, history.first, queue: history),
             ),
           ),
           SliverToBoxAdapter(
@@ -1597,7 +1921,8 @@ class _OnlineLibraryTab extends StatelessWidget {
                       title: track.title,
                       subtitle: track.artist,
                       imageUrl: track.artworkUrl ?? '',
-                      onTap: () => _openTrackPlayer(context, track, queue: history),
+                      onTap: () =>
+                          _openTrackPlayer(context, track, queue: history),
                     ),
                   );
                 },
@@ -1611,7 +1936,8 @@ class _OnlineLibraryTab extends StatelessWidget {
             child: _YoutubeSectionHeader(
               title: 'Favoritas online',
               actionLabel: 'Reproduzir tudo',
-              onActionTap: () => _openTrackPlayer(context, favorites.first, queue: favorites),
+              onActionTap: () =>
+                  _openTrackPlayer(context, favorites.first, queue: favorites),
             ),
           ),
           SliverList(
@@ -1623,38 +1949,46 @@ class _OnlineLibraryTab extends StatelessWidget {
                 return _YoutubeSongRow(
                   track: track,
                   isFavorite: provider.isFavorite(track),
-                  onTap: () => _openTrackPlayer(context, track, queue: favorites),
+                  onTap: () =>
+                      _openTrackPlayer(context, track, queue: favorites),
                   onFavoriteTap: () => provider.toggleFavorite(track),
                 );
               },
-              childCount: (favorites.take(8).length * 2 - 1).clamp(0, 99).toInt(),
+              childCount: (favorites.take(8).length * 2 - 1)
+                  .clamp(0, 99)
+                  .toInt(),
             ),
           ),
         ],
         if (playlists.isNotEmpty) ...[
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Suas playlists')),
+          const SliverToBoxAdapter(
+            child: _YoutubeSectionHeader(title: 'Suas playlists'),
+          ),
           SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, rawIndex) {
-                if (rawIndex.isOdd) return const SizedBox(height: 8);
-                final index = rawIndex ~/ 2;
-                final playlist = playlists[index];
-                return _UserPlaylistRow(
-                  playlist: playlist,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => UserPlaylistScreen(playlistId: playlist.id))),
-                  onRename: () => _showRenamePlaylistDialog(context, playlist),
-                  onDelete: () => provider.deleteUserPlaylist(playlist.id),
-                );
-              },
-              childCount: (playlists.length * 2 - 1).clamp(0, 999).toInt(),
-            ),
+            delegate: SliverChildBuilderDelegate((context, rawIndex) {
+              if (rawIndex.isOdd) return const SizedBox(height: 8);
+              final index = rawIndex ~/ 2;
+              final playlist = playlists[index];
+              return _UserPlaylistRow(
+                playlist: playlist,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => UserPlaylistScreen(playlistId: playlist.id),
+                  ),
+                ),
+                onRename: () => _showRenamePlaylistDialog(context, playlist),
+                onDelete: () => provider.deleteUserPlaylist(playlist.id),
+              );
+            }, childCount: (playlists.length * 2 - 1).clamp(0, 999).toInt()),
           ),
         ],
         if (history.isEmpty && favorites.isEmpty && playlists.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: _EmptyState(message: 'Sua biblioteca online aparece aqui conforme você ouvir, favoritar e criar playlists.'),
+            child: _EmptyState(
+              message: 'Sua biblioteca online aparece aqui conforme você ouvir, favoritar e criar playlists.',
+            ),
           ),
         SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
       ],
@@ -1679,8 +2013,10 @@ class _LibraryShortcutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return OneUi9Glass(
       radius: 26,
-      blur: 16,
-      showShadow: false,
+      blur: 26,
+      clear: true,
+      showShadow: true,
+      tint: context.oneUiFloatingGlass,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1692,11 +2028,27 @@ class _LibraryShortcutCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Icon(icon, size: 46, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  icon,
+                  size: 46,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const Spacer(),
-                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
                 const SizedBox(height: 4),
-                Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.oneUiSecondary)),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: context.oneUiSecondary),
+                ),
               ],
             ),
           ),
@@ -1714,17 +2066,20 @@ class _TracksTab extends StatefulWidget {
   State<_TracksTab> createState() => _TracksTabState();
 }
 
-class _TracksTabState extends State<_TracksTab> with AutomaticKeepAliveClientMixin {
+class _TracksTabState extends State<_TracksTab>
+    with AutomaticKeepAliveClientMixin {
   late final ScrollController _controller;
 
   @override
   void initState() {
     super.initState();
     final provider = context.read<MusicPlayerProvider>();
-    _controller = ScrollController(initialScrollOffset: provider.scrollOffsetFor(LibraryTab.tracks))
-      ..addListener(() {
-        provider.updateScrollOffset(LibraryTab.tracks, _controller.offset);
-      });
+    _controller =
+        ScrollController(
+          initialScrollOffset: provider.scrollOffsetFor(LibraryTab.tracks),
+        )..addListener(() {
+          provider.updateScrollOffset(LibraryTab.tracks, _controller.offset);
+        });
   }
 
   Future<bool> _handleSystemBack() async {
@@ -1751,7 +2106,6 @@ class _TracksTabState extends State<_TracksTab> with AutomaticKeepAliveClientMix
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
     final tracks = provider.filteredTracks;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1761,7 +2115,9 @@ class _TracksTabState extends State<_TracksTab> with AutomaticKeepAliveClientMix
     return ListView.separated(
       key: const PageStorageKey('tracks_list'),
       controller: _controller,
-      padding: EdgeInsets.zero,
+      padding: EdgeInsets.only(
+        bottom: _localFloatingOverlayPadding(context, provider),
+      ),
       itemCount: tracks.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -1795,17 +2151,20 @@ class _AlbumsTab extends StatefulWidget {
   State<_AlbumsTab> createState() => _AlbumsTabState();
 }
 
-class _AlbumsTabState extends State<_AlbumsTab> with AutomaticKeepAliveClientMixin {
+class _AlbumsTabState extends State<_AlbumsTab>
+    with AutomaticKeepAliveClientMixin {
   late final ScrollController _controller;
 
   @override
   void initState() {
     super.initState();
     final provider = context.read<MusicPlayerProvider>();
-    _controller = ScrollController(initialScrollOffset: provider.scrollOffsetFor(LibraryTab.albums))
-      ..addListener(() {
-        provider.updateScrollOffset(LibraryTab.albums, _controller.offset);
-      });
+    _controller =
+        ScrollController(
+          initialScrollOffset: provider.scrollOffsetFor(LibraryTab.albums),
+        )..addListener(() {
+          provider.updateScrollOffset(LibraryTab.albums, _controller.offset);
+        });
   }
 
   Future<bool> _handleSystemBack() async {
@@ -1832,7 +2191,6 @@ class _AlbumsTabState extends State<_AlbumsTab> with AutomaticKeepAliveClientMix
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
     final albumEntries = provider.albums.entries.toList();
     if (albumEntries.isEmpty) {
@@ -1842,7 +2200,10 @@ class _AlbumsTabState extends State<_AlbumsTab> with AutomaticKeepAliveClientMix
     return GridView.builder(
       key: const PageStorageKey('albums_grid'),
       controller: _controller,
-      padding: const EdgeInsets.only(top: 8, bottom: 132),
+      padding: EdgeInsets.only(
+        top: 8,
+        bottom: _localFloatingOverlayPadding(context, provider),
+      ),
       itemCount: albumEntries.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
@@ -1860,10 +2221,8 @@ class _AlbumsTabState extends State<_AlbumsTab> with AutomaticKeepAliveClientMix
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => AlbumDetailScreen(
-                  albumKey: entry.key,
-                  tracks: albumTracks,
-                ),
+                builder: (_) =>
+                    AlbumDetailScreen(albumKey: entry.key, tracks: albumTracks),
               ),
             );
           },
@@ -1890,17 +2249,20 @@ class _ArtistsTab extends StatefulWidget {
   State<_ArtistsTab> createState() => _ArtistsTabState();
 }
 
-class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientMixin {
+class _ArtistsTabState extends State<_ArtistsTab>
+    with AutomaticKeepAliveClientMixin {
   late final ScrollController _controller;
 
   @override
   void initState() {
     super.initState();
     final provider = context.read<MusicPlayerProvider>();
-    _controller = ScrollController(initialScrollOffset: provider.scrollOffsetFor(LibraryTab.artists))
-      ..addListener(() {
-        provider.updateScrollOffset(LibraryTab.artists, _controller.offset);
-      });
+    _controller =
+        ScrollController(
+          initialScrollOffset: provider.scrollOffsetFor(LibraryTab.artists),
+        )..addListener(() {
+          provider.updateScrollOffset(LibraryTab.artists, _controller.offset);
+        });
   }
 
   Future<bool> _handleSystemBack() async {
@@ -1931,7 +2293,9 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
     final provider = context.watch<MusicPlayerProvider>();
     final artistEntries = provider.artists.entries.toList();
     final onlineArtists = provider.onlineRecommendedArtists;
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    final subtle = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (artistEntries.isEmpty && onlineArtists.isEmpty) {
@@ -1960,7 +2324,9 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
     return ListView.separated(
       key: const PageStorageKey('artists_list'),
       controller: _controller,
-      padding: EdgeInsets.zero,
+      padding: EdgeInsets.only(
+        bottom: _localFloatingOverlayPadding(context, provider),
+      ),
       itemCount: items.length,
       separatorBuilder: (_, i) {
         final item = items[i];
@@ -1977,10 +2343,8 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
             padding: const EdgeInsets.only(top: 8, bottom: 6),
             child: Text(
               item.headerLabel!,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: subtle,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, color: subtle),
             ),
           );
         }
@@ -1993,14 +2357,18 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
               borderRadius: BorderRadius.circular(26),
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => OnlineArtistScreen(artist: artist)),
+                  MaterialPageRoute(
+                    builder: (_) => OnlineArtistScreen(artist: artist),
+                  ),
                 );
               },
               child: OneUi9Glass(
                 padding: const EdgeInsets.all(14),
                 radius: 26,
-                blur: 12,
-                showShadow: false,
+                blur: 24,
+                clear: true,
+                showShadow: true,
+                tint: context.oneUiFloatingGlass,
                 child: Row(
                   children: [
                     SizedBox(
@@ -2012,7 +2380,8 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
                             ? Image.network(
                                 artist.thumbnailUrl,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 40),
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.person_rounded, size: 40),
                               )
                             : const Icon(Icons.person_rounded, size: 40),
                       ),
@@ -2026,12 +2395,14 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
                             artist.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'Artista online',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subtle),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: subtle),
                           ),
                         ],
                       ),
@@ -2048,7 +2419,10 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
         // Local artist
         final entry = item.localEntry!;
         final coverTrack = entry.value.first;
-        final albumsCount = entry.value.map((e) => e.albumGroupKey).toSet().length;
+        final albumsCount = entry.value
+            .map((e) => e.albumGroupKey)
+            .toSet()
+            .length;
         return Material(
           color: Colors.transparent,
           child: InkWell(
@@ -2063,11 +2437,17 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
             child: OneUi9Glass(
               padding: const EdgeInsets.all(14),
               radius: 26,
-              blur: 12,
-              showShadow: false,
+              blur: 24,
+              clear: true,
+              showShadow: true,
+              tint: context.oneUiFloatingGlass,
               child: Row(
                 children: [
-                  SizedBox(width: 74, height: 74, child: _ArtworkCard(track: coverTrack)),
+                  SizedBox(
+                    width: 74,
+                    height: 74,
+                    child: _ArtworkCard(track: coverTrack),
+                  ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -2077,12 +2457,14 @@ class _ArtistsTabState extends State<_ArtistsTab> with AutomaticKeepAliveClientM
                           entry.key,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           '$albumsCount álbum(ns) • ${entry.value.length} faixa(s)',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: subtle),
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(color: subtle),
                         ),
                       ],
                     ),
@@ -2117,13 +2499,13 @@ class _ArtistListItem {
   });
 
   const _ArtistListItem.sectionHeader(String label)
-      : this._(headerLabel: label);
+    : this._(headerLabel: label);
 
   const _ArtistListItem.online(OnlineArtist artist)
-      : this._(onlineArtist: artist);
+    : this._(onlineArtist: artist);
 
   _ArtistListItem.local(String name, List<AudioTrack> tracks)
-      : this._(localEntry: MapEntry(name, tracks));
+    : this._(localEntry: MapEntry(name, tracks));
 
   final String? headerLabel;
   final OnlineArtist? onlineArtist;
@@ -2140,17 +2522,20 @@ class _FavoritesTab extends StatefulWidget {
   State<_FavoritesTab> createState() => _FavoritesTabState();
 }
 
-class _FavoritesTabState extends State<_FavoritesTab> with AutomaticKeepAliveClientMixin {
+class _FavoritesTabState extends State<_FavoritesTab>
+    with AutomaticKeepAliveClientMixin {
   late final ScrollController _controller;
 
   @override
   void initState() {
     super.initState();
     final provider = context.read<MusicPlayerProvider>();
-    _controller = ScrollController(initialScrollOffset: provider.scrollOffsetFor(LibraryTab.favorites))
-      ..addListener(() {
-        provider.updateScrollOffset(LibraryTab.favorites, _controller.offset);
-      });
+    _controller =
+        ScrollController(
+          initialScrollOffset: provider.scrollOffsetFor(LibraryTab.favorites),
+        )..addListener(() {
+          provider.updateScrollOffset(LibraryTab.favorites, _controller.offset);
+        });
   }
 
   Future<bool> _handleSystemBack() async {
@@ -2177,7 +2562,6 @@ class _FavoritesTabState extends State<_FavoritesTab> with AutomaticKeepAliveCli
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
     final tracks = provider.favoriteTracks;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2187,7 +2571,9 @@ class _FavoritesTabState extends State<_FavoritesTab> with AutomaticKeepAliveCli
     return ListView.separated(
       key: const PageStorageKey('favorites_list'),
       controller: _controller,
-      padding: EdgeInsets.zero,
+      padding: EdgeInsets.only(
+        bottom: _localFloatingOverlayPadding(context, provider),
+      ),
       itemCount: tracks.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -2213,7 +2599,6 @@ class _FavoritesTabState extends State<_FavoritesTab> with AutomaticKeepAliveCli
   }
 }
 
-
 class _OnlineTab extends StatefulWidget {
   const _OnlineTab({required this.card, required this.keyboardOpen});
 
@@ -2224,7 +2609,8 @@ class _OnlineTab extends StatefulWidget {
   State<_OnlineTab> createState() => _OnlineTabState();
 }
 
-class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMixin {
+class _OnlineTabState extends State<_OnlineTab>
+    with AutomaticKeepAliveClientMixin {
   late final ScrollController _controller;
   int _sectionIndex = 0;
 
@@ -2239,21 +2625,33 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
     _sectionIndex = _normalizeSectionIndex(provider.onlineSectionIndex);
     if (_sectionIndex != provider.onlineSectionIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.read<MusicPlayerProvider>().setOnlineSectionIndex(_sectionIndex);
+        if (mounted)
+          context.read<MusicPlayerProvider>().setOnlineSectionIndex(
+            _sectionIndex,
+          );
       });
     }
-    _controller = ScrollController(initialScrollOffset: provider.scrollOffsetFor(LibraryTab.online))
-      ..addListener(() {
-        provider.updateScrollOffset(LibraryTab.online, _controller.offset);
-      });
+    _controller =
+        ScrollController(
+          initialScrollOffset: provider.scrollOffsetFor(LibraryTab.online),
+        )..addListener(() {
+          provider.updateScrollOffset(LibraryTab.online, _controller.offset);
+        });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final provider = context.read<MusicPlayerProvider>();
       final hasImmediateOnlineContent =
-          provider.onlineDisplaySongs.isNotEmpty && provider.onlineDisplayArtists.isNotEmpty && provider.onlineDisplayPlaylists.isNotEmpty;
+          provider.onlineDisplaySongs.isNotEmpty &&
+          provider.onlineDisplayArtists.isNotEmpty &&
+          provider.onlineDisplayPlaylists.isNotEmpty;
       if (!hasImmediateOnlineContent || provider.onlineActiveQuery.isNotEmpty) {
-        final query = provider.onlineActiveQuery.isNotEmpty ? provider.searchController.text.trim() : '';
-        provider.searchOnline(forceQuery: query, refresh: !hasImmediateOnlineContent || query.isNotEmpty);
+        final query = provider.onlineActiveQuery.isNotEmpty
+            ? provider.searchController.text.trim()
+            : '';
+        provider.searchOnline(
+          forceQuery: query,
+          refresh: !hasImmediateOnlineContent || query.isNotEmpty,
+        );
       }
     });
   }
@@ -2284,20 +2682,26 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
     super.build(context);
     final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
-    final requestedSectionIndex = _normalizeSectionIndex(provider.onlineSectionIndex);
+    final requestedSectionIndex = _normalizeSectionIndex(
+      provider.onlineSectionIndex,
+    );
     if (requestedSectionIndex != _sectionIndex) {
       _sectionIndex = requestedSectionIndex;
     }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final subtle = isDark ? Colors.white70 : Colors.black54;
     final keyboardOpen = widget.keyboardOpen;
-    final listBottomPadding = keyboardOpen ? 18.0 : (provider.currentTrack == null ? 24.0 : 112.0);
+    final listBottomPadding = keyboardOpen
+        ? 18.0
+        : _onlineFloatingOverlayPadding(context, provider);
 
     Widget content;
     if (_sectionIndex == 3) {
       final favorites = provider.onlineFavoriteTracks;
       content = favorites.isEmpty
-          ? const _EmptyState(message: 'Nenhuma música online favoritada ainda.')
+          ? const _EmptyState(
+              message: 'Nenhuma música online favoritada ainda.',
+            )
           : ListView.separated(
               key: const PageStorageKey('online_favorites_list'),
               controller: _controller,
@@ -2311,7 +2715,8 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                   isDark: isDark,
                   isFavorite: provider.isFavorite(track),
                   onFavoriteTap: () => provider.toggleFavorite(track),
-                  onTap: () => _openTrackPlayer(context, track, queue: favorites),
+                  onTap: () =>
+                      _openTrackPlayer(context, track, queue: favorites),
                 );
               },
             );
@@ -2348,10 +2753,11 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
+                  OneUi9GlassButton(
                     onPressed: () => _showCreatePlaylistDialog(context),
                     icon: const Icon(Icons.add_rounded),
-                    label: Text(t.createPlaylist),
+                    active: true,
+                    child: Text(t.createPlaylist),
                   ),
                 ],
               ),
@@ -2368,7 +2774,10 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                   playlist: playlist,
                   onTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => UserPlaylistScreen(playlistId: playlist.id)),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            UserPlaylistScreen(playlistId: playlist.id),
+                      ),
                     );
                   },
                   onRename: () => _showRenamePlaylistDialog(context, playlist),
@@ -2404,7 +2813,9 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
             );
           } else {
             content = songs.isEmpty
-                ? const _EmptyState(message: 'Nenhuma música online encontrada.')
+                ? const _EmptyState(
+                    message: 'Nenhuma música online encontrada.',
+                  )
                 : ListView.separated(
                     key: const PageStorageKey('online_songs_list'),
                     controller: _controller,
@@ -2418,7 +2829,8 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                         isDark: isDark,
                         isFavorite: provider.isFavorite(track),
                         onFavoriteTap: () => provider.toggleFavorite(track),
-                        onTap: () => _openTrackPlayer(context, track, queue: songs),
+                        onTap: () =>
+                            _openTrackPlayer(context, track, queue: songs),
                       );
                     },
                   );
@@ -2440,7 +2852,9 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                       artist: artist,
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => OnlineArtistScreen(artist: artist)),
+                          MaterialPageRoute(
+                            builder: (_) => OnlineArtistScreen(artist: artist),
+                          ),
                         );
                       },
                     );
@@ -2450,7 +2864,9 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
         case 2:
           final playlists = provider.onlineDisplayPlaylists;
           content = playlists.isEmpty
-              ? const _EmptyState(message: 'Nenhuma playlist online encontrada.')
+              ? const _EmptyState(
+                  message: 'Nenhuma playlist online encontrada.',
+                )
               : ListView.separated(
                   key: const PageStorageKey('online_playlists_list'),
                   controller: _controller,
@@ -2463,7 +2879,10 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                       playlist: playlist,
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist)),
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                OnlinePlaylistScreen(playlist: playlist),
+                          ),
                         );
                       },
                     );
@@ -2493,7 +2912,9 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
             onSubmitted: (query) {
               final cleaned = query.trim();
               provider.searchController.text = cleaned;
-              provider.searchController.selection = TextSelection.collapsed(offset: cleaned.length);
+              provider.searchController.selection = TextSelection.collapsed(
+                offset: cleaned.length,
+              );
               setState(() => _sectionIndex = 0);
               provider.setOnlineSectionIndex(0);
               provider.searchOnline(forceQuery: cleaned, refresh: true);
@@ -2539,8 +2960,15 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
       'Foco': 'músicas para foco',
       'Para dormir': 'músicas para dormir',
     };
-    final loadingEmptyHome = provider.isOnlineLoading && featuredSongs.isEmpty && featuredPlaylists.isEmpty;
-    final emptyHome = !loadingEmptyHome && featuredSongs.isEmpty && featuredPlaylists.isEmpty && artists.isEmpty;
+    final loadingEmptyHome =
+        provider.isOnlineLoading &&
+        featuredSongs.isEmpty &&
+        featuredPlaylists.isEmpty;
+    final emptyHome =
+        !loadingEmptyHome &&
+        featuredSongs.isEmpty &&
+        featuredPlaylists.isEmpty &&
+        artists.isEmpty;
     return CustomScrollView(
       key: const PageStorageKey('online_youtube_music_home'),
       controller: _controller,
@@ -2565,10 +2993,14 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                         label: label,
                         onTap: () {
                           provider.searchController.text = query;
-                          provider.searchController.selection = TextSelection.collapsed(offset: query.length);
+                          provider.searchController.selection =
+                              TextSelection.collapsed(offset: query.length);
                           setState(() => _sectionIndex = 0);
                           provider.setOnlineSectionIndex(0);
-                          provider.searchOnline(forceQuery: query, refresh: true);
+                          provider.searchOnline(
+                            forceQuery: query,
+                            refresh: true,
+                          );
                         },
                       );
                     },
@@ -2578,7 +3010,13 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                 _YoutubeSectionHeader(
                   title: 'Acesso rápido',
                   actionLabel: featuredSongs.isEmpty ? null : 'Ver tudo',
-                  onActionTap: featuredSongs.isEmpty ? null : () => _openTrackPlayer(context, featuredSongs.first, queue: songs),
+                  onActionTap: featuredSongs.isEmpty
+                      ? null
+                      : () => _openTrackPlayer(
+                          context,
+                          featuredSongs.first,
+                          queue: songs,
+                        ),
                 ),
               ],
             ),
@@ -2587,11 +3025,15 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
         if (emptyHome)
           SliverToBoxAdapter(
             child: _OnlineEmptyHomeCard(
-              message: provider.onlineError ?? 'Ainda não carreguei recomendações online.',
+              message:
+                  provider.onlineError ??
+                  'Ainda não carreguei recomendações online.',
               onRetry: () => provider.searchOnline(refresh: true),
             ),
           ),
-        if (featuredSongs.isNotEmpty || featuredPlaylists.isNotEmpty || loadingEmptyHome)
+        if (featuredSongs.isNotEmpty ||
+            featuredPlaylists.isNotEmpty ||
+            loadingEmptyHome)
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             sliver: SliverGrid(
@@ -2608,7 +3050,8 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                     return _YoutubeMusicTile(
                       title: track.title,
                       imageUrl: track.artworkUrl ?? '',
-                      onTap: () => _openTrackPlayer(context, track, queue: songs),
+                      onTap: () =>
+                          _openTrackPlayer(context, track, queue: songs),
                     );
                   }
                   if (featuredPlaylists.isNotEmpty) {
@@ -2616,7 +3059,12 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                     return _YoutubeMusicTile(
                       title: playlist.title,
                       imageUrl: playlist.thumbnailUrl,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist))),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              OnlinePlaylistScreen(playlist: playlist),
+                        ),
+                      ),
                     );
                   }
                   return const _YoutubeLoadingTile();
@@ -2624,8 +3072,8 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                 childCount: featuredSongs.isNotEmpty
                     ? featuredSongs.length.clamp(0, 9).toInt()
                     : featuredPlaylists.isNotEmpty
-                        ? featuredPlaylists.length.clamp(0, 9).toInt()
-                        : 9,
+                    ? featuredPlaylists.length.clamp(0, 9).toInt()
+                    : 9,
               ),
             ),
           ),
@@ -2635,7 +3083,8 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
             child: _YoutubeSectionHeader(
               title: 'Escolhas rápidas',
               actionLabel: 'Ver tudo',
-              onActionTap: () => _openTrackPlayer(context, songs.first, queue: songs),
+              onActionTap: () =>
+                  _openTrackPlayer(context, songs.first, queue: songs),
             ),
           ),
           SliverList(
@@ -2657,13 +3106,19 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                   ),
                 );
               },
-              childCount: ((pickSongs.isEmpty ? songs : pickSongs).take(12).length * 2 - 1).clamp(0, 999).toInt(),
+              childCount:
+                  ((pickSongs.isEmpty ? songs : pickSongs).take(12).length * 2 -
+                          1)
+                      .clamp(0, 999)
+                      .toInt(),
             ),
           ),
         ],
         if (playlists.isNotEmpty) ...[
           const SliverToBoxAdapter(child: SizedBox(height: 26)),
-          const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Mixes e playlists')),
+          const SliverToBoxAdapter(
+            child: _YoutubeSectionHeader(title: 'Mixes e playlists'),
+          ),
           SliverToBoxAdapter(
             child: SizedBox(
               height: 190,
@@ -2680,7 +3135,12 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                       title: playlist.title,
                       subtitle: playlist.author,
                       imageUrl: playlist.thumbnailUrl,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: playlist))),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              OnlinePlaylistScreen(playlist: playlist),
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -2690,7 +3150,9 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
         ],
         if (artists.isNotEmpty) ...[
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
-          const SliverToBoxAdapter(child: _YoutubeSectionHeader(title: 'Artistas para você')),
+          const SliverToBoxAdapter(
+            child: _YoutubeSectionHeader(title: 'Artistas para você'),
+          ),
           SliverToBoxAdapter(
             child: SizedBox(
               height: 164,
@@ -2703,7 +3165,11 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
                   final artist = artists[index];
                   return _YoutubeArtistBubble(
                     artist: artist,
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineArtistScreen(artist: artist))),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => OnlineArtistScreen(artist: artist),
+                      ),
+                    ),
                   );
                 },
               ),
@@ -2733,7 +3199,9 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
         ..._metrolistSongRailSlivers(
           context: context,
           title: 'Ouvir de novo',
-          songs: provider.onlineHistoryTracks.isNotEmpty ? provider.onlineHistoryTracks : songs,
+          songs: provider.onlineHistoryTracks.isNotEmpty
+              ? provider.onlineHistoryTracks
+              : songs,
           take: 12,
         ),
         ..._metrolistSongRailSlivers(
@@ -2751,7 +3219,9 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
         ),
         ..._metrolistSongRailSlivers(
           context: context,
-          title: songs.isNotEmpty ? 'Parecido com ${songs.first.artist.isEmpty ? songs.first.title : songs.first.artist}' : 'Parecido com o que você ouve',
+          title: songs.isNotEmpty
+              ? 'Parecido com ${songs.first.artist.isEmpty ? songs.first.title : songs.first.artist}'
+              : 'Parecido com o que você ouve',
           songs: songs,
           skip: 3,
           take: 12,
@@ -2775,7 +3245,6 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
     );
   }
 
-
   @override
   void dispose() {
     _controller.dispose();
@@ -2785,8 +3254,6 @@ class _OnlineTabState extends State<_OnlineTab> with AutomaticKeepAliveClientMix
   @override
   bool get wantKeepAlive => true;
 }
-
-
 
 class _OnlineInlineSearchBar extends StatelessWidget {
   const _OnlineInlineSearchBar({
@@ -2803,8 +3270,10 @@ class _OnlineInlineSearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return OneUi9Glass(
       radius: 26,
-      blur: 18,
-      showShadow: false,
+      blur: 28,
+      clear: true,
+      showShadow: true,
+      tint: context.oneUiFloatingGlassStrong,
       child: TextField(
         controller: controller,
         textInputAction: TextInputAction.search,
@@ -2816,13 +3285,18 @@ class _OnlineInlineSearchBar extends StatelessWidget {
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           prefixIcon: const Icon(Icons.search_rounded),
-          suffixIcon: IconButton(
+          suffixIcon: OneUi9IconButton(
             tooltip: 'Limpar busca',
-            icon: const Icon(Icons.close_rounded),
+            icon: Icons.close_rounded,
             onPressed: onClear,
+            size: 36,
+            iconSize: 18,
           ),
           hintText: 'Buscar músicas online...',
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 15,
+          ),
         ),
       ),
     );
@@ -2851,7 +3325,8 @@ class _OnlineSubPageHeader extends StatelessWidget {
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+            style: Theme.of(context).textTheme.headlineSmall
+                ?.copyWith(fontWeight: FontWeight.w900),
           ),
         ),
       ],
@@ -2880,44 +3355,10 @@ class _AppAdaptiveIcon extends StatelessWidget {
             color: const Color(0xFFFF1744),
             borderRadius: BorderRadius.circular(size * 0.28),
           ),
-          child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: size * 0.7),
-        ),
-      ),
-    );
-  }
-}
-
-class _YoutubeMusicChip extends StatelessWidget {
-  const _YoutubeMusicChip({required this.label, required this.onTap, this.selected = false});
-
-  final String label;
-  final VoidCallback onTap;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = Theme.of(context).colorScheme.primary;
-    return OneUi9Glass(
-      radius: 17,
-      blur: 12,
-      showShadow: false,
-      tint: selected ? accent.withOpacity(isDark ? 0.23 : 0.13) : null,
-      borderColor: selected ? accent.withOpacity(0.42) : context.oneUiOutline,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(17),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 10),
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: selected ? accent : null,
-                  ),
-            ),
+          child: Icon(
+            Icons.play_arrow_rounded,
+            color: Colors.white,
+            size: size * 0.7,
           ),
         ),
       ),
@@ -2925,8 +3366,29 @@ class _YoutubeMusicChip extends StatelessWidget {
   }
 }
 
+class _YoutubeMusicChip extends StatelessWidget {
+  const _YoutubeMusicChip({
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return OneUi9GlassChip(label: label, selected: selected, onTap: onTap);
+  }
+}
+
 class _YoutubeSectionHeader extends StatelessWidget {
-  const _YoutubeSectionHeader({required this.title, this.actionLabel, this.onActionTap});
+  const _YoutubeSectionHeader({
+    required this.title,
+    this.actionLabel,
+    this.onActionTap,
+  });
 
   final String title;
   final String? actionLabel;
@@ -2941,16 +3403,14 @@ class _YoutubeSectionHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w900),
             ),
           ),
           if (actionLabel != null)
-            OutlinedButton(
+            OneUi9GlassButton(
               onPressed: onActionTap,
-              style: OutlinedButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              ),
+              compact: true,
               child: Text(actionLabel!),
             ),
         ],
@@ -2980,13 +3440,15 @@ class _OnlineEmptyHomeCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             message,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
+          OneUi9GlassButton(
             onPressed: onRetry,
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Tentar de novo'),
+            compact: true,
+            child: const Text('Tentar de novo'),
           ),
         ],
       ),
@@ -3004,7 +3466,9 @@ class _YoutubeLoadingTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.07) : Colors.black.withOpacity(0.06),
+          color: isDark
+              ? Colors.white.withOpacity(0.07)
+              : Colors.black.withOpacity(0.06),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Stack(
@@ -3030,7 +3494,8 @@ class _YoutubeLoadingTile extends StatelessWidget {
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.4,
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.75),
+                  color: Theme.of(context).colorScheme.primary
+                      .withOpacity(0.75),
                 ),
               ),
             ),
@@ -3042,7 +3507,12 @@ class _YoutubeLoadingTile extends StatelessWidget {
 }
 
 class _YoutubeMusicTile extends StatelessWidget {
-  const _YoutubeMusicTile({required this.title, required this.imageUrl, required this.onTap, this.subtitle});
+  const _YoutubeMusicTile({
+    required this.title,
+    required this.imageUrl,
+    required this.onTap,
+    this.subtitle,
+  });
 
   final String title;
   final String? subtitle;
@@ -3062,8 +3532,10 @@ class _YoutubeMusicTile extends StatelessWidget {
             Expanded(
               child: OneUi9Glass(
                 radius: 16,
-                blur: 10,
-                showShadow: false,
+                blur: 22,
+                clear: true,
+                showShadow: true,
+                tint: context.oneUiFloatingGlass,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -3089,10 +3561,10 @@ class _YoutubeMusicTile extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              height: 1.05,
-                            ),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          height: 1.05,
+                        ),
                       ),
                     ),
                   ],
@@ -3105,7 +3577,8 @@ class _YoutubeMusicTile extends StatelessWidget {
                 subtitle!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.oneUiSecondary),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: context.oneUiSecondary),
               ),
             ],
           ],
@@ -3132,26 +3605,41 @@ class _YoutubeSongRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return OneUi9Glass(
       radius: 21,
-      blur: 10,
-      showShadow: false,
+      blur: 24,
+      clear: true,
+      showShadow: true,
+      tint: context.oneUiFloatingGlass,
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(9, 4, 5, 4),
         minLeadingWidth: 52,
-        leading: _RemoteArtworkBox(imageUrl: track.artworkUrl ?? '', size: 54, radius: 15),
-        title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+        leading: _RemoteArtworkBox(
+          imageUrl: track.artworkUrl ?? '',
+          size: 54,
+          radius: 15,
+        ),
+        title: Text(
+          track.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
         subtitle: Text(
           '${track.artist} • Tocou ${((track.id.hashCode.abs() % 90) + 10)} mi vezes',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: context.oneUiSecondary),
         ),
-        trailing: IconButton(
-          tooltip: isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
+        trailing: OneUi9IconButton(
+          tooltip: isFavorite
+              ? 'Remover dos favoritos'
+              : 'Adicionar aos favoritos',
           onPressed: onFavoriteTap,
-          icon: Icon(
-            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            color: isFavorite ? const Color(0xFFFF6B8A) : context.oneUiSecondary,
-          ),
+          icon: isFavorite
+              ? Icons.favorite_rounded
+              : Icons.favorite_border_rounded,
+          active: isFavorite,
+          size: 40,
+          iconSize: 20,
         ),
         onTap: onTap,
       ),
@@ -3174,9 +3662,19 @@ class _YoutubeArtistBubble extends StatelessWidget {
         onTap: onTap,
         child: Column(
           children: [
-            _RemoteArtworkBox(imageUrl: artist.thumbnailUrl, size: 94, radius: 47),
+            _RemoteArtworkBox(
+              imageUrl: artist.thumbnailUrl,
+              size: 94,
+              radius: 47,
+            ),
             const SizedBox(height: 8),
-            Text(artist.name, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              artist.name,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
           ],
         ),
       ),
@@ -3197,41 +3695,21 @@ class _OnlineSectionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppStrings.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-      backgroundColor: context.oneUiGlass,
-      selectedColor: const Color(0xFF7395FF).withOpacity(0.22),
-      side: BorderSide(
-        color: selected
-            ? const Color(0xFF7395FF)
-            : context.oneUiOutline,
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-      visualDensity: const VisualDensity(horizontal: -1, vertical: -1),
-    );
+    return OneUi9GlassChip(label: label, selected: selected, onTap: onTap);
   }
 }
 
 class _OnlineAlbumCard extends StatelessWidget {
-  const _OnlineAlbumCard({
-    required this.album,
-    required this.onTap,
-  });
+  const _OnlineAlbumCard({required this.album, required this.onTap});
 
   final OnlineAlbum album;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final t = AppStrings.of(context);
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    final subtle = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -3257,10 +3735,10 @@ class _OnlineAlbumCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      height: 0.98,
-                      fontSize: 14.0,
-                    ),
+                  fontWeight: FontWeight.w800,
+                  height: 0.98,
+                  fontSize: 14.0,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -3269,11 +3747,8 @@ class _OnlineAlbumCard extends StatelessWidget {
                     : '${album.artist} • ${album.year}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: subtle,
-                      fontSize: 12.2,
-                      height: 1.0,
-                    ),
+                style: Theme.of(context).textTheme.bodyLarge
+                    ?.copyWith(color: subtle, fontSize: 12.2, height: 1.0),
               ),
             ],
           ),
@@ -3284,10 +3759,7 @@ class _OnlineAlbumCard extends StatelessWidget {
 }
 
 class _OnlineArtistRow extends StatelessWidget {
-  const _OnlineArtistRow({
-    required this.artist,
-    required this.onTap,
-  });
+  const _OnlineArtistRow({required this.artist, required this.onTap});
 
   final OnlineArtist artist;
   final VoidCallback onTap;
@@ -3304,8 +3776,10 @@ class _OnlineArtistRow extends StatelessWidget {
         onTap: onTap,
         child: OneUi9Glass(
           radius: 24,
-          blur: 12,
-          showShadow: false,
+          blur: 24,
+          clear: true,
+          showShadow: true,
+          tint: context.oneUiFloatingGlass,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -3324,14 +3798,14 @@ class _OnlineArtistRow extends StatelessWidget {
                         artist.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Abrir artista online',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subtle),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: subtle),
                       ),
                     ],
                   ),
@@ -3347,10 +3821,7 @@ class _OnlineArtistRow extends StatelessWidget {
 }
 
 class _OnlinePlaylistRow extends StatelessWidget {
-  const _OnlinePlaylistRow({
-    required this.playlist,
-    required this.onTap,
-  });
+  const _OnlinePlaylistRow({required this.playlist, required this.onTap});
 
   final OnlinePlaylist playlist;
   final VoidCallback onTap;
@@ -3367,8 +3838,10 @@ class _OnlinePlaylistRow extends StatelessWidget {
         onTap: onTap,
         child: OneUi9Glass(
           radius: 24,
-          blur: 12,
-          showShadow: false,
+          blur: 24,
+          clear: true,
+          showShadow: true,
+          tint: context.oneUiFloatingGlass,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -3387,18 +3860,19 @@ class _OnlinePlaylistRow extends StatelessWidget {
                         playlist.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        playlist.songCountText == null || playlist.songCountText!.trim().isEmpty
+                        playlist.songCountText == null ||
+                                playlist.songCountText!.trim().isEmpty
                             ? playlist.author
                             : '${playlist.author} • ${playlist.songCountText}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subtle),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: subtle),
                       ),
                     ],
                   ),
@@ -3437,10 +3911,7 @@ class _RemoteArtworkBox extends StatelessWidget {
 
     final wrapped = ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: child,
-      ),
+      child: AspectRatio(aspectRatio: 1, child: child),
     );
 
     if (size == null) return wrapped;
@@ -3488,7 +3959,9 @@ class OnlineAlbumScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final provider = context.read<MusicPlayerProvider>();
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    final subtle = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
     return Scaffold(
       body: SafeArea(
         child: FutureBuilder<OnlineAlbumPage>(
@@ -3498,7 +3971,11 @@ class OnlineAlbumScreen extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError || !snapshot.hasData) {
-              return Center(child: Text('Falha ao abrir álbum online: ${snapshot.error ?? ''}'));
+              return Center(
+                child: Text(
+                  'Falha ao abrir álbum online: ${snapshot.error ?? ''}',
+                ),
+              );
             }
             final page = snapshot.data!;
             return Column(
@@ -3516,33 +3993,50 @@ class OnlineAlbumScreen extends StatelessWidget {
                           SizedBox(
                             width: 120,
                             height: 120,
-                            child: _RemoteArtworkBox(imageUrl: page.album.thumbnailUrl, radius: 24),
+                            child: _RemoteArtworkBox(
+                              imageUrl: page.album.thumbnailUrl,
+                              radius: 24,
+                            ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: Text(
-                              page.album.year == null ? page.album.artist : '${page.album.artist}\n${page.album.year}',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: subtle, height: 1.5),
+                              page.album.year == null
+                                  ? page.album.artist
+                                  : '${page.album.artist}\n${page.album.year}',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(color: subtle, height: 1.5),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 18),
-                      ...page.tracks.asMap().entries.map((entry) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: MusicListTile(
-                              track: entry.value,
-                              isDark: Theme.of(context).brightness == Brightness.dark,
-                              isFavorite: provider.isFavorite(entry.value),
-                              onFavoriteTap: () => provider.toggleFavorite(entry.value),
-                              onTap: () => _openTrackPlayer(context, entry.value, queue: page.tracks),
-                              leadingLabel: '${entry.key + 1}',
+                      ...page.tracks.asMap().entries.map(
+                        (entry) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: MusicListTile(
+                            track: entry.value,
+                            isDark:
+                                Theme.of(context).brightness == Brightness.dark,
+                            isFavorite: provider.isFavorite(entry.value),
+                            onFavoriteTap: () =>
+                                provider.toggleFavorite(entry.value),
+                            onTap: () => _openTrackPlayer(
+                              context,
+                              entry.value,
+                              queue: page.tracks,
                             ),
-                          )),
+                            leadingLabel: '${entry.key + 1}',
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const Align(alignment: Alignment.bottomCenter, child: FloatingPlayerBar()),
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FloatingPlayerBar(),
+                ),
               ],
             );
           },
@@ -3561,7 +4055,9 @@ class OnlineArtistScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final provider = context.read<MusicPlayerProvider>();
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    final subtle = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
     return Scaffold(
       body: SafeArea(
         child: FutureBuilder<OnlineArtistPage>(
@@ -3571,7 +4067,11 @@ class OnlineArtistScreen extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError || !snapshot.hasData) {
-              return Center(child: Text('Falha ao abrir artista online: ${snapshot.error ?? ''}'));
+              return Center(
+                child: Text(
+                  'Falha ao abrir artista online: ${snapshot.error ?? ''}',
+                ),
+              );
             }
             final page = snapshot.data!;
             return Column(
@@ -3589,7 +4089,10 @@ class OnlineArtistScreen extends StatelessWidget {
                           child: SizedBox(
                             width: 150,
                             height: 150,
-                            child: _RemoteArtworkBox(imageUrl: page.artist.thumbnailUrl, radius: 80),
+                            child: _RemoteArtworkBox(
+                              imageUrl: page.artist.thumbnailUrl,
+                              radius: 80,
+                            ),
                           ),
                         ),
                       const SizedBox(height: 18),
@@ -3599,21 +4102,33 @@ class OnlineArtistScreen extends StatelessWidget {
                           actionLabel: 'Mostrar tudo',
                           onActionTap: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => OnlineArtistAllSongsScreen(page: page)),
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    OnlineArtistAllSongsScreen(page: page),
+                              ),
                             );
                           },
                         ),
                         const SizedBox(height: 10),
-                        ...page.topSongs.map((track) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: MusicListTile(
-                                track: track,
-                                isDark: Theme.of(context).brightness == Brightness.dark,
-                                isFavorite: provider.isFavorite(track),
-                                onFavoriteTap: () => provider.toggleFavorite(track),
-                                onTap: () => _openTrackPlayer(context, track, queue: page.topSongs),
+                        ...page.topSongs.map(
+                          (track) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: MusicListTile(
+                              track: track,
+                              isDark:
+                                  Theme.of(context).brightness ==
+                                  Brightness.dark,
+                              isFavorite: provider.isFavorite(track),
+                              onFavoriteTap: () =>
+                                  provider.toggleFavorite(track),
+                              onTap: () => _openTrackPlayer(
+                                context,
+                                track,
+                                queue: page.topSongs,
                               ),
-                            )),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 18),
                       ],
                       if (page.artist.name.trim().isNotEmpty) ...[
@@ -3622,45 +4137,69 @@ class OnlineArtistScreen extends StatelessWidget {
                           actionLabel: 'Mostrar tudo',
                           onActionTap: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => OnlineArtistAllAlbumsScreen(page: page)),
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    OnlineArtistAllAlbumsScreen(page: page),
+                              ),
                             );
                           },
                         ),
                         const SizedBox(height: 10),
-                        ...page.albums.map((item) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _OnlinePlaylistRow(
-                                playlist: OnlinePlaylist(
-                                  playlistId: item.playlistId ?? item.browseId,
-                                  title: item.title,
-                                  author: item.artist,
-                                  thumbnailUrl: item.thumbnailUrl,
-                                  songCountText: item.year,
-                                ),
-                                onTap: () {
-                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineAlbumScreen(album: item)));
-                                },
+                        ...page.albums.map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _OnlinePlaylistRow(
+                              playlist: OnlinePlaylist(
+                                playlistId: item.playlistId ?? item.browseId,
+                                title: item.title,
+                                author: item.artist,
+                                thumbnailUrl: item.thumbnailUrl,
+                                songCountText: item.year,
                               ),
-                            )),
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        OnlineAlbumScreen(album: item),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 18),
                       ],
                       if (page.playlists.isNotEmpty) ...[
-                        Text(t.playlists, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(
+                          t.playlists,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
                         const SizedBox(height: 10),
-                        ...page.playlists.map((item) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _OnlinePlaylistRow(
-                                playlist: item,
-                                onTap: () {
-                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlinePlaylistScreen(playlist: item)));
-                                },
-                              ),
-                            )),
+                        ...page.playlists.map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _OnlinePlaylistRow(
+                              playlist: item,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        OnlinePlaylistScreen(playlist: item),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                       ],
                     ],
                   ),
                 ),
-                const Align(alignment: Alignment.bottomCenter, child: FloatingPlayerBar()),
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FloatingPlayerBar(),
+                ),
               ],
             );
           },
@@ -3688,11 +4227,13 @@ class _OnlineSectionHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800),
           ),
         ),
-        TextButton(
+        OneUi9GlassButton(
           onPressed: onActionTap,
+          compact: true,
           child: Text(actionLabel),
         ),
       ],
@@ -3717,14 +4258,20 @@ class OnlineArtistAllSongsScreen extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return Center(child: Text('Falha ao carregar todas as músicas: ${snapshot.error ?? ''}'));
+              return Center(
+                child: Text(
+                  'Falha ao carregar todas as músicas: ${snapshot.error ?? ''}',
+                ),
+              );
             }
             final tracks = snapshot.data ?? const <AudioTrack>[];
             return Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _OneUiDetailHeader(title: '${page.artist.name} • Músicas'),
+                  child: _OneUiDetailHeader(
+                    title: '${page.artist.name} • Músicas',
+                  ),
                 ),
                 Expanded(
                   child: tracks.isEmpty
@@ -3738,17 +4285,27 @@ class OnlineArtistAllSongsScreen extends StatelessWidget {
                               padding: const EdgeInsets.only(bottom: 12),
                               child: MusicListTile(
                                 track: track,
-                                isDark: Theme.of(context).brightness == Brightness.dark,
+                                isDark:
+                                    Theme.of(context).brightness ==
+                                    Brightness.dark,
                                 isFavorite: provider.isFavorite(track),
-                                onFavoriteTap: () => provider.toggleFavorite(track),
-                                onTap: () => _openTrackPlayer(context, track, queue: tracks),
+                                onFavoriteTap: () =>
+                                    provider.toggleFavorite(track),
+                                onTap: () => _openTrackPlayer(
+                                  context,
+                                  track,
+                                  queue: tracks,
+                                ),
                                 leadingLabel: '${index + 1}',
                               ),
                             );
                           },
                         ),
                 ),
-                const Align(alignment: Alignment.bottomCenter, child: FloatingPlayerBar()),
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FloatingPlayerBar(),
+                ),
               ],
             );
           },
@@ -3775,14 +4332,20 @@ class OnlineArtistAllAlbumsScreen extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return Center(child: Text('Falha ao carregar todos os álbuns: ${snapshot.error ?? ''}'));
+              return Center(
+                child: Text(
+                  'Falha ao carregar todos os álbuns: ${snapshot.error ?? ''}',
+                ),
+              );
             }
             final albums = snapshot.data ?? const <OnlineAlbum>[];
             return Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _OneUiDetailHeader(title: '${page.artist.name} • Álbuns'),
+                  child: _OneUiDetailHeader(
+                    title: '${page.artist.name} • Álbuns',
+                  ),
                 ),
                 Expanded(
                   child: albums.isEmpty
@@ -3803,14 +4366,22 @@ class OnlineArtistAllAlbumsScreen extends StatelessWidget {
                                   songCountText: item.year,
                                 ),
                                 onTap: () {
-                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnlineAlbumScreen(album: item)));
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          OnlineAlbumScreen(album: item),
+                                    ),
+                                  );
                                 },
                               ),
                             );
                           },
                         ),
                 ),
-                const Align(alignment: Alignment.bottomCenter, child: FloatingPlayerBar()),
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FloatingPlayerBar(),
+                ),
               ],
             );
           },
@@ -3829,7 +4400,9 @@ class OnlinePlaylistScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final provider = context.read<MusicPlayerProvider>();
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    final subtle = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
     return Scaffold(
       body: SafeArea(
         child: FutureBuilder<OnlinePlaylistPage>(
@@ -3839,7 +4412,11 @@ class OnlinePlaylistScreen extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError || !snapshot.hasData) {
-              return Center(child: Text('Falha ao abrir playlist online: ${snapshot.error ?? ''}'));
+              return Center(
+                child: Text(
+                  'Falha ao abrir playlist online: ${snapshot.error ?? ''}',
+                ),
+              );
             }
             final page = snapshot.data!;
             return Column(
@@ -3857,35 +4434,53 @@ class OnlinePlaylistScreen extends StatelessWidget {
                           SizedBox(
                             width: 120,
                             height: 120,
-                            child: _RemoteArtworkBox(imageUrl: page.playlist.thumbnailUrl, radius: 24),
+                            child: _RemoteArtworkBox(
+                              imageUrl: page.playlist.thumbnailUrl,
+                              radius: 24,
+                            ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: Text(
-                              page.playlist.songCountText == null || page.playlist.songCountText!.trim().isEmpty
+                              page.playlist.songCountText == null ||
+                                      page.playlist.songCountText!
+                                          .trim()
+                                          .isEmpty
                                   ? page.playlist.author
                                   : '${page.playlist.author}\n${page.playlist.songCountText}',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: subtle, height: 1.5),
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(color: subtle, height: 1.5),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 18),
-                      ...page.tracks.asMap().entries.map((entry) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: MusicListTile(
-                              track: entry.value,
-                              isDark: Theme.of(context).brightness == Brightness.dark,
-                              isFavorite: provider.isFavorite(entry.value),
-                              onFavoriteTap: () => provider.toggleFavorite(entry.value),
-                              onTap: () => _openTrackPlayer(context, entry.value, queue: page.tracks),
-                              leadingLabel: '${entry.key + 1}',
+                      ...page.tracks.asMap().entries.map(
+                        (entry) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: MusicListTile(
+                            track: entry.value,
+                            isDark:
+                                Theme.of(context).brightness == Brightness.dark,
+                            isFavorite: provider.isFavorite(entry.value),
+                            onFavoriteTap: () =>
+                                provider.toggleFavorite(entry.value),
+                            onTap: () => _openTrackPlayer(
+                              context,
+                              entry.value,
+                              queue: page.tracks,
                             ),
-                          )),
+                            leadingLabel: '${entry.key + 1}',
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const Align(alignment: Alignment.bottomCenter, child: FloatingPlayerBar()),
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FloatingPlayerBar(),
+                ),
               ],
             );
           },
@@ -3894,7 +4489,6 @@ class OnlinePlaylistScreen extends StatelessWidget {
     );
   }
 }
-
 
 class _UserPlaylistRow extends StatelessWidget {
   const _UserPlaylistRow({
@@ -3912,8 +4506,12 @@ class _UserPlaylistRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
-    final coverTrack = playlist.tracks.isNotEmpty ? playlist.tracks.first : null;
+    final subtle = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
+    final coverTrack = playlist.tracks.isNotEmpty
+        ? playlist.tracks.first
+        : null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -3921,8 +4519,10 @@ class _UserPlaylistRow extends StatelessWidget {
         onTap: onTap,
         child: OneUi9Glass(
           radius: 24,
-          blur: 12,
-          showShadow: false,
+          blur: 24,
+          clear: true,
+          showShadow: true,
+          tint: context.oneUiFloatingGlass,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -3935,17 +4535,29 @@ class _UserPlaylistRow extends StatelessWidget {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(18),
                             gradient: const LinearGradient(
-                              colors: [OneUi9.accentSoft, OneUi9.violet, OneUi9.accent],
+                              colors: [
+                                OneUi9.accentSoft,
+                                OneUi9.violet,
+                                OneUi9.accent,
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                           ),
-                          child: const Icon(Icons.playlist_play_rounded, color: Colors.white, size: 34),
+                          child: const Icon(
+                            Icons.playlist_play_rounded,
+                            color: Colors.white,
+                            size: 34,
+                          ),
                         )
                       : LazyArtwork(
                           track: coverTrack,
                           borderRadius: BorderRadius.circular(18),
-                          fallbackIcon: const Icon(Icons.playlist_play_rounded, color: Colors.white, size: 34),
+                          fallbackIcon: const Icon(
+                            Icons.playlist_play_rounded,
+                            color: Colors.white,
+                            size: 34,
+                          ),
                         ),
                 ),
                 const SizedBox(width: 14),
@@ -3957,25 +4569,43 @@ class _UserPlaylistRow extends StatelessWidget {
                         playlist.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${playlist.tracks.length} faixa${playlist.tracks.length == 1 ? '' : 's'}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subtle),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: subtle),
                       ),
                     ],
                   ),
                 ),
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'rename') onRename();
-                    if (value == 'delete') onDelete();
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'rename', child: Text('Renomear')),
-                    PopupMenuItem(value: 'delete', child: Text('Excluir')),
-                  ],
+                OneUi9Glass(
+                  radius: 20,
+                  blur: 18,
+                  showShadow: true,
+                  clear: true,
+                  tint: context.oneUiFloatingGlass,
+                  child: SizedBox.square(
+                    dimension: 40,
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.more_horiz_rounded),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        side: BorderSide.none,
+                      ),
+                      onSelected: (value) {
+                        if (value == 'rename') onRename();
+                        if (value == 'delete') onDelete();
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'rename', child: Text('Renomear')),
+                        PopupMenuItem(value: 'delete', child: Text('Excluir')),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -3995,14 +4625,16 @@ class UserPlaylistScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
-    final playlistIndex = provider.userPlaylists.indexWhere((item) => item.id == playlistId);
-    final UserPlaylist? playlist = playlistIndex == -1 ? null : provider.userPlaylists[playlistIndex];
+    final playlistIndex = provider.userPlaylists.indexWhere(
+      (item) => item.id == playlistId,
+    );
+    final UserPlaylist? playlist = playlistIndex == -1
+        ? null
+        : provider.userPlaylists[playlistIndex];
 
     if (playlist == null) {
       return const Scaffold(
-        body: SafeArea(
-          child: Center(child: Text('Playlist não encontrada.')),
-        ),
+        body: SafeArea(child: Center(child: Text('Playlist não encontrada.'))),
       );
     }
 
@@ -4022,7 +4654,8 @@ class UserPlaylistScreen extends StatelessWidget {
                     title: playlist.name,
                     actions: [
                       OneUi9IconButton(
-                        onPressed: () => _showRenamePlaylistDialog(context, playlist),
+                        onPressed: () =>
+                            _showRenamePlaylistDialog(context, playlist),
                         icon: Icons.edit_rounded,
                         tooltip: 'Renomear playlist',
                       ),
@@ -4031,38 +4664,51 @@ class UserPlaylistScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     '${playlist.tracks.length} faixa${playlist.tracks.length == 1 ? '' : 's'} na playlist',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subtle),
+                    style: Theme.of(context).textTheme.bodyMedium
+                        ?.copyWith(color: subtle),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     children: [
-                      FilledButton.icon(
-                        onPressed: () => _showAddTracksToPlaylistSheet(context, playlist),
+                      OneUi9GlassButton(
+                        onPressed: () =>
+                            _showAddTracksToPlaylistSheet(context, playlist),
                         icon: const Icon(Icons.add_rounded),
-                        label: const Text('Adicionar músicas'),
+                        child: const Text('Adicionar músicas'),
                       ),
                       if (playlist.tracks.isNotEmpty)
-                        FilledButton.icon(
-                          onPressed: () => _openTrackPlayer(context, playlist.tracks.first, queue: playlist.tracks),
+                        OneUi9GlassButton(
+                          onPressed: () => _openTrackPlayer(
+                            context,
+                            playlist.tracks.first,
+                            queue: playlist.tracks,
+                          ),
                           icon: const Icon(Icons.play_arrow_rounded),
-                          label: const Text('Tocar playlist'),
+                          active: true,
+                          child: const Text('Tocar playlist'),
                         ),
                     ],
                   ),
                   const SizedBox(height: 14),
                   Expanded(
                     child: playlist.tracks.isEmpty
-                        ? const _EmptyState(message: 'Adicione músicas para começar essa playlist.')
+                        ? const _EmptyState(
+                            message:
+                                'Adicione músicas para começar essa playlist.',
+                          )
                         : ListView.separated(
                             padding: const EdgeInsets.only(bottom: 132),
                             itemCount: playlist.tracks.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final track = playlist.tracks[index];
                               return Dismissible(
-                                key: ValueKey('${playlist.id}-${track.libraryKey}'),
+                                key: ValueKey(
+                                  '${playlist.id}-${track.libraryKey}',
+                                ),
                                 direction: DismissDirection.endToStart,
                                 background: Container(
                                   alignment: Alignment.centerRight,
@@ -4071,15 +4717,27 @@ class UserPlaylistScreen extends StatelessWidget {
                                     color: Colors.redAccent.withOpacity(0.18),
                                     borderRadius: BorderRadius.circular(24),
                                   ),
-                                  child: const Icon(Icons.delete_rounded, color: Colors.redAccent),
+                                  child: const Icon(
+                                    Icons.delete_rounded,
+                                    color: Colors.redAccent,
+                                  ),
                                 ),
-                                onDismissed: (_) => provider.removeTrackFromUserPlaylist(playlist.id, track),
+                                onDismissed: (_) =>
+                                    provider.removeTrackFromUserPlaylist(
+                                      playlist.id,
+                                      track,
+                                    ),
                                 child: MusicListTile(
                                   track: track,
                                   isDark: isDark,
                                   isFavorite: provider.isFavorite(track),
-                                  onFavoriteTap: () => provider.toggleFavorite(track),
-                                  onTap: () => _openTrackPlayer(context, track, queue: playlist.tracks),
+                                  onFavoriteTap: () =>
+                                      provider.toggleFavorite(track),
+                                  onTap: () => _openTrackPlayer(
+                                    context,
+                                    track,
+                                    queue: playlist.tracks,
+                                  ),
                                 ),
                               );
                             },
@@ -4088,7 +4746,10 @@ class UserPlaylistScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const Align(alignment: Alignment.bottomCenter, child: FloatingPlayerBar()),
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: FloatingPlayerBar(),
+            ),
           ],
         ),
       ),
@@ -4097,11 +4758,7 @@ class UserPlaylistScreen extends StatelessWidget {
 }
 
 class ArtistDetailScreen extends StatelessWidget {
-
-  const ArtistDetailScreen({
-    super.key,
-    required this.artistName,
-  });
+  const ArtistDetailScreen({super.key, required this.artistName});
 
   final String artistName;
 
@@ -4110,7 +4767,10 @@ class ArtistDetailScreen extends StatelessWidget {
     final t = AppStrings.of(context);
     final provider = context.watch<MusicPlayerProvider>();
     final albums = provider.albumsForArtist(artistName).entries.toList();
-    final tracksCount = albums.fold<int>(0, (total, entry) => total + entry.value.length);
+    final tracksCount = albums.fold<int>(
+      0,
+      (total, entry) => total + entry.value.length,
+    );
     final coverTrack = albums.isNotEmpty ? albums.first.value.first : null;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final subtle = isDark ? Colors.white70 : Colors.black54;
@@ -4130,15 +4790,20 @@ class ArtistDetailScreen extends StatelessWidget {
                   if (coverTrack != null)
                     Row(
                       children: [
-                        SizedBox(width: 108, height: 108, child: _ArtworkCard(track: coverTrack, albumMode: true)),
+                        SizedBox(
+                          width: 108,
+                          height: 108,
+                          child: _ArtworkCard(
+                            track: coverTrack,
+                            albumMode: true,
+                          ),
+                        ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: Text(
                             '${albums.length} álbum(ns)\n$tracksCount faixa(s)',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: subtle,
-                                  height: 1.5,
-                                ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(color: subtle, height: 1.5),
                           ),
                         ),
                       ],
@@ -4146,19 +4811,25 @@ class ArtistDetailScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   Expanded(
                     child: albums.isEmpty
-                        ? const _EmptyState(message: 'Nenhum álbum encontrado para este artista.')
+                        ? const _EmptyState(
+                            message:
+                                'Nenhum álbum encontrado para este artista.',
+                          )
                         : GridView.builder(
                             padding: const EdgeInsets.only(bottom: 132),
                             itemCount: albums.length,
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              mainAxisSpacing: 6,
-                              crossAxisSpacing: 14,
-                              mainAxisExtent: 216,
-                            ),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  mainAxisSpacing: 6,
+                                  crossAxisSpacing: 14,
+                                  mainAxisExtent: 216,
+                                ),
                             itemBuilder: (context, index) {
                               final entry = albums[index];
-                              final albumTracks = provider.albumTracksFor(entry.key);
+                              final albumTracks = provider.albumTracksFor(
+                                entry.key,
+                              );
                               final albumCoverTrack = albumTracks.first;
                               return _AlbumCard(
                                 track: albumCoverTrack,
@@ -4226,15 +4897,17 @@ class AlbumDetailScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      SizedBox(width: 118, height: 118, child: _ArtworkCard(track: coverTrack, albumMode: true)),
+                      SizedBox(
+                        width: 118,
+                        height: 118,
+                        child: _ArtworkCard(track: coverTrack, albumMode: true),
+                      ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Text(
                           '${coverTrack.primaryArtistForAlbum}\n${sorted.length} faixa(s)',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: subtle,
-                                height: 1.4,
-                              ),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(color: subtle, height: 1.4),
                         ),
                       ),
                     ],
@@ -4249,11 +4922,14 @@ class AlbumDetailScreen extends StatelessWidget {
                         final track = sorted[index];
                         return MusicListTile(
                           track: track,
-                          leadingLabel: track.trackNumberInt > 0 ? track.trackNumberInt.toString() : '${index + 1}',
+                          leadingLabel: track.trackNumberInt > 0
+                              ? track.trackNumberInt.toString()
+                              : '${index + 1}',
                           isDark: isDark,
                           isFavorite: provider.isFavorite(track),
                           onFavoriteTap: () => provider.toggleFavorite(track),
-                          onTap: () => _openTrackPlayer(context, track, queue: sorted),
+                          onTap: () =>
+                              _openTrackPlayer(context, track, queue: sorted),
                         );
                       },
                     ),
@@ -4287,8 +4963,9 @@ class _AlbumCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppStrings.of(context);
-    final subtle = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    final subtle = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
 
     return Material(
       color: Colors.transparent,
@@ -4315,10 +4992,10 @@ class _AlbumCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            height: 0.98,
-                            fontSize: 14.0,
-                          ),
+                        fontWeight: FontWeight.w800,
+                        height: 0.98,
+                        fontSize: 14.0,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -4326,10 +5003,10 @@ class _AlbumCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: subtle,
-                            fontSize: 12.2,
-                            height: 1.0,
-                          ),
+                        color: subtle,
+                        fontSize: 12.2,
+                        height: 1.0,
+                      ),
                     ),
                   ],
                 ),
@@ -4343,31 +5020,39 @@ class _AlbumCard extends StatelessWidget {
 }
 
 class _ArtworkCard extends StatelessWidget {
-  const _ArtworkCard({
-    required this.track,
-    this.albumMode = false,
-  });
+  const _ArtworkCard({required this.track, this.albumMode = false});
 
   final AudioTrack track;
   final bool albumMode;
 
   @override
   Widget build(BuildContext context) {
-    final t = AppStrings.of(context);
     final radius = BorderRadius.circular(albumMode ? 26 : 22);
     return AspectRatio(
       aspectRatio: 1,
-      child: OneUi9Glass(
-        radius: albumMode ? 27 : 23,
-        blur: 10,
-        showShadow: false,
-        child: Padding(
-          padding: const EdgeInsets.all(2),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: context.oneUiOutline, width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: context.oneUiShadow.withOpacity(0.70),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
           child: LazyArtwork(
             track: track,
             borderRadius: radius,
             fit: BoxFit.cover,
-            fallbackIcon: const Icon(Icons.album_rounded, size: 72, color: Colors.white),
+            fallbackIcon: const Icon(
+              Icons.album_rounded,
+              size: 72,
+              color: Colors.white,
+            ),
           ),
         ),
       ),

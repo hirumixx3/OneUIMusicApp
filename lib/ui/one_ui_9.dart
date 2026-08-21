@@ -33,8 +33,12 @@ abstract final class OneUi9 {
     );
     final foreground = dark ? const Color(0xFFF4F6FF) : const Color(0xFF161B28);
     final secondary = dark ? const Color(0xFFB7BED0) : const Color(0xFF5F6677);
-    final outline = dark ? Colors.white.withOpacity(0.13) : Colors.white.withOpacity(0.88);
-    final fieldFill = dark ? Colors.white.withOpacity(0.075) : Colors.white.withOpacity(0.56);
+    final outline = dark
+        ? Colors.white.withOpacity(0.13)
+        : Colors.white.withOpacity(0.88);
+    final fieldFill = dark
+        ? Colors.white.withOpacity(0.075)
+        : Colors.white.withOpacity(0.56);
 
     return base.copyWith(
       textTheme: base.textTheme.copyWith(
@@ -84,14 +88,23 @@ abstract final class OneUi9 {
         ),
       ),
       iconTheme: IconThemeData(color: foreground),
-      dividerTheme: DividerThemeData(color: dark ? Colors.white10 : Colors.black12, space: 1),
+      dividerTheme: DividerThemeData(
+        color: dark ? Colors.white10 : Colors.black12,
+        space: 1,
+      ),
       inputDecorationTheme: InputDecorationThemeData(
         filled: true,
         fillColor: fieldFill,
-        hintStyle: TextStyle(color: secondary.withOpacity(0.82), fontWeight: FontWeight.w500),
+        hintStyle: TextStyle(
+          color: secondary.withOpacity(0.82),
+          fontWeight: FontWeight.w500,
+        ),
         prefixIconColor: secondary,
         suffixIconColor: secondary,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 17,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(24),
           borderSide: BorderSide(color: outline),
@@ -102,7 +115,10 @@ abstract final class OneUi9 {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(24),
-          borderSide: BorderSide(color: colorScheme.primary.withOpacity(0.78), width: 1.5),
+          borderSide: BorderSide(
+            color: colorScheme.primary.withOpacity(0.78),
+            width: 1.5,
+          ),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(24),
@@ -111,33 +127,58 @@ abstract final class OneUi9 {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: dark ? const Color(0xFF9DB7FF) : const Color(0xFF315FC8),
-          foregroundColor: dark ? const Color(0xFF0C1B3A) : Colors.white,
-          elevation: 0,
+          backgroundColor: colorScheme.primary.withOpacity(dark ? 0.25 : 0.14),
+          foregroundColor: colorScheme.primary,
+          disabledBackgroundColor: fieldFill.withOpacity(0.55),
+          disabledForegroundColor: secondary.withOpacity(0.55),
+          elevation: 6,
+          shadowColor: dark
+              ? Colors.black.withOpacity(0.34)
+              : const Color(0xFF778AB8).withOpacity(0.22),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          side: BorderSide(color: outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: foreground,
+          backgroundColor: fieldFill,
+          elevation: 5,
+          shadowColor: dark
+              ? Colors.black.withOpacity(0.30)
+              : const Color(0xFF778AB8).withOpacity(0.18),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
           side: BorderSide(color: outline),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: colorScheme.primary,
+          backgroundColor: fieldFill.withOpacity(0.72),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          side: BorderSide(color: outline),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: foreground,
+          backgroundColor: fieldFill,
+          disabledBackgroundColor: fieldFill.withOpacity(0.40),
+          side: BorderSide(color: outline),
+          minimumSize: const Size(42, 42),
+          shape: const CircleBorder(),
           highlightColor: colorScheme.primary.withOpacity(0.14),
         ),
       ),
@@ -147,7 +188,10 @@ abstract final class OneUi9 {
         side: BorderSide(color: outline),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         labelStyle: TextStyle(color: foreground, fontWeight: FontWeight.w700),
-        secondaryLabelStyle: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.w800),
+        secondaryLabelStyle: TextStyle(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w800,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       ),
       listTileTheme: ListTileThemeData(
@@ -167,8 +211,12 @@ abstract final class OneUi9 {
       bottomSheetTheme: BottomSheetThemeData(
         elevation: 0,
         modalElevation: 0,
-        backgroundColor: dark ? const Color(0xEB111827) : const Color(0xEBF8FAFF),
-        modalBackgroundColor: dark ? const Color(0xEB111827) : const Color(0xEBF8FAFF),
+        backgroundColor: dark
+            ? const Color(0xEB111827)
+            : const Color(0xEBF8FAFF),
+        modalBackgroundColor: dark
+            ? const Color(0xEB111827)
+            : const Color(0xEBF8FAFF),
         surfaceTintColor: Colors.transparent,
         showDragHandle: true,
         dragHandleColor: secondary.withOpacity(0.45),
@@ -178,7 +226,9 @@ abstract final class OneUi9 {
       ),
       dialogTheme: DialogThemeData(
         elevation: 0,
-        backgroundColor: dark ? const Color(0xF0182030) : const Color(0xF5F8FAFF),
+        backgroundColor: dark
+            ? const Color(0xF0182030)
+            : const Color(0xF5F8FAFF),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(30),
@@ -188,8 +238,13 @@ abstract final class OneUi9 {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         elevation: 0,
-        backgroundColor: dark ? const Color(0xEE20283A) : const Color(0xF2FFFFFF),
-        contentTextStyle: TextStyle(color: foreground, fontWeight: FontWeight.w600),
+        backgroundColor: dark
+            ? const Color(0xEE20283A)
+            : const Color(0xF2FFFFFF),
+        contentTextStyle: TextStyle(
+          color: foreground,
+          fontWeight: FontWeight.w600,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
           side: BorderSide(color: outline),
@@ -205,7 +260,9 @@ abstract final class OneUi9 {
         indicatorColor: Colors.transparent,
         labelColor: foreground,
         unselectedLabelColor: secondary,
-        overlayColor: WidgetStatePropertyAll(colorScheme.primary.withOpacity(0.08)),
+        overlayColor: WidgetStatePropertyAll(
+          colorScheme.primary.withOpacity(0.08),
+        ),
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: <TargetPlatform, PageTransitionsBuilder>{
@@ -219,17 +276,32 @@ abstract final class OneUi9 {
 extension OneUi9Context on BuildContext {
   bool get oneUiDark => Theme.of(this).brightness == Brightness.dark;
 
-  Color get oneUiForeground => oneUiDark ? const Color(0xFFF4F6FF) : const Color(0xFF161B28);
+  Color get oneUiForeground =>
+      oneUiDark ? const Color(0xFFF4F6FF) : const Color(0xFF161B28);
 
-  Color get oneUiSecondary => oneUiDark ? const Color(0xFFB7BED0) : const Color(0xFF5F6677);
+  Color get oneUiSecondary =>
+      oneUiDark ? const Color(0xFFB7BED0) : const Color(0xFF5F6677);
 
-  Color get oneUiGlass => oneUiDark ? Colors.white.withOpacity(0.075) : Colors.white.withOpacity(0.54);
+  Color get oneUiGlass => oneUiDark
+      ? Colors.white.withOpacity(0.075)
+      : Colors.white.withOpacity(0.54);
 
-  Color get oneUiGlassStrong => oneUiDark ? const Color(0xB3182130) : const Color(0xC7F8FAFF);
+  Color get oneUiGlassStrong =>
+      oneUiDark ? const Color(0xB3182130) : const Color(0xC7F8FAFF);
 
-  Color get oneUiOutline => oneUiDark ? Colors.white.withOpacity(0.13) : Colors.white.withOpacity(0.88);
+  Color get oneUiFloatingGlass =>
+      Colors.white.withOpacity(oneUiDark ? 0.045 : 0.14);
 
-  Color get oneUiShadow => oneUiDark ? Colors.black.withOpacity(0.34) : const Color(0xFF778AB8).withOpacity(0.18);
+  Color get oneUiFloatingGlassStrong =>
+      Colors.white.withOpacity(oneUiDark ? 0.065 : 0.18);
+
+  Color get oneUiOutline => oneUiDark
+      ? Colors.white.withOpacity(0.13)
+      : Colors.white.withOpacity(0.88);
+
+  Color get oneUiShadow => oneUiDark
+      ? Colors.black.withOpacity(0.34)
+      : const Color(0xFF778AB8).withOpacity(0.18);
 }
 
 /// Atmospheric wallpaper rendered once behind the app's transparent routes.
@@ -252,8 +324,18 @@ class OneUi9Backdrop extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: dark
-                    ? const [Color(0xFF070B13), Color(0xFF0D1728), Color(0xFF171225), Color(0xFF080C15)]
-                    : const [Color(0xFFF9FBFF), Color(0xFFEAF1FF), Color(0xFFF4ECFF), Color(0xFFF8FAFF)],
+                    ? const [
+                        Color(0xFF070B13),
+                        Color(0xFF0D1728),
+                        Color(0xFF171225),
+                        Color(0xFF080C15),
+                      ]
+                    : const [
+                        Color(0xFFF9FBFF),
+                        Color(0xFFEAF1FF),
+                        Color(0xFFF4ECFF),
+                        Color(0xFFF8FAFF),
+                      ],
                 stops: const [0, 0.38, 0.72, 1],
               ),
             ),
@@ -279,8 +361,14 @@ class OneUi9Backdrop extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: dark
-                    ? [Colors.black.withOpacity(0.05), Colors.black.withOpacity(0.22)]
-                    : [Colors.white.withOpacity(0.03), Colors.white.withOpacity(0.20)],
+                    ? [
+                        Colors.black.withOpacity(0.05),
+                        Colors.black.withOpacity(0.22),
+                      ]
+                    : [
+                        Colors.white.withOpacity(0.03),
+                        Colors.white.withOpacity(0.20),
+                      ],
               ),
             ),
           ),
@@ -331,6 +419,7 @@ class OneUi9Glass extends StatelessWidget {
     this.tint,
     this.borderColor,
     this.showShadow = true,
+    this.clear = false,
   });
 
   final Widget child;
@@ -342,11 +431,13 @@ class OneUi9Glass extends StatelessWidget {
   final Color? tint;
   final Color? borderColor;
   final bool showShadow;
+  final bool clear;
 
   @override
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(radius);
-    final surface = tint ?? (strong ? context.oneUiGlassStrong : context.oneUiGlass);
+    final surface =
+        tint ?? (strong ? context.oneUiGlassStrong : context.oneUiGlass);
     final glass = ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
@@ -360,14 +451,24 @@ class OneUi9Glass extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(context.oneUiDark ? 0.12 : 0.46),
+                Colors.white.withOpacity(
+                  clear
+                      ? (context.oneUiDark ? 0.11 : 0.30)
+                      : (context.oneUiDark ? 0.12 : 0.46),
+                ),
                 surface,
-                OneUi9.accent.withOpacity(context.oneUiDark ? 0.035 : 0.025),
+                OneUi9.accent.withOpacity(
+                  clear
+                      ? (context.oneUiDark ? 0.025 : 0.018)
+                      : (context.oneUiDark ? 0.035 : 0.025),
+                ),
               ],
               stops: const [0, 0.42, 1],
             ),
           ),
-          child: padding == null ? child : Padding(padding: padding!, child: child),
+          child: padding == null
+              ? child
+              : Padding(padding: padding!, child: child),
         ),
       ),
     );
@@ -380,8 +481,15 @@ class OneUi9Glass extends StatelessWidget {
               boxShadow: [
                 BoxShadow(
                   color: context.oneUiShadow,
-                  blurRadius: strong ? 30 : 22,
-                  offset: const Offset(0, 10),
+                  blurRadius: strong ? 34 : 25,
+                  offset: const Offset(0, 12),
+                ),
+                BoxShadow(
+                  color: Colors.white.withOpacity(
+                    context.oneUiDark ? 0.025 : 0.36,
+                  ),
+                  blurRadius: 3,
+                  offset: const Offset(0, -1),
                 ),
               ],
             )
@@ -400,6 +508,7 @@ class OneUi9IconButton extends StatelessWidget {
     this.size = 46,
     this.iconSize = 23,
     this.active = false,
+    this.showShadow = true,
   });
 
   final IconData icon;
@@ -408,23 +517,311 @@ class OneUi9IconButton extends StatelessWidget {
   final double size;
   final double iconSize;
   final bool active;
+  final bool showShadow;
 
   @override
   Widget build(BuildContext context) {
     return OneUi9Glass(
       radius: size / 2,
-      blur: 14,
-      showShadow: false,
-      tint: active ? Theme.of(context).colorScheme.primary.withOpacity(context.oneUiDark ? 0.28 : 0.16) : null,
+      blur: 26,
+      showShadow: showShadow,
+      clear: true,
+      tint: active
+          ? Theme.of(context).colorScheme.primary
+                .withOpacity(context.oneUiDark ? 0.20 : 0.11)
+          : context.oneUiFloatingGlass,
+      borderColor: active
+          ? Theme.of(context).colorScheme.primary.withOpacity(0.48)
+          : context.oneUiOutline,
       child: SizedBox.square(
         dimension: size,
         child: IconButton(
           tooltip: tooltip,
           onPressed: onPressed,
           iconSize: iconSize,
+          padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
+            side: BorderSide.none,
+            minimumSize: Size.square(size),
+            shape: const CircleBorder(),
+          ),
           icon: Icon(
             icon,
-            color: active ? Theme.of(context).colorScheme.primary : context.oneUiForeground,
+            color: active
+                ? Theme.of(context).colorScheme.primary
+                : context.oneUiForeground,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A real frosted action surface: blur, translucent tint, border and physical
+/// separation from the content behind it. Use this instead of opaque Material
+/// buttons for visible actions.
+class OneUi9GlassButton extends StatelessWidget {
+  const OneUi9GlassButton({
+    super.key,
+    required this.onPressed,
+    required this.child,
+    this.icon,
+    this.active = false,
+    this.compact = false,
+    this.expand = false,
+    this.showShadow = true,
+    this.radius = 23,
+    this.tint,
+    this.foregroundColor,
+    this.padding,
+  });
+
+  final VoidCallback? onPressed;
+  final Widget child;
+  final Widget? icon;
+  final bool active;
+  final bool compact;
+  final bool expand;
+  final bool showShadow;
+  final double radius;
+  final Color? tint;
+  final Color? foregroundColor;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final enabled = onPressed != null;
+    final contentColor =
+        foregroundColor ?? (active ? accent : context.oneUiForeground);
+    final effectiveTint =
+        tint ??
+        (active
+            ? accent.withOpacity(context.oneUiDark ? 0.20 : 0.11)
+            : enabled
+            ? context.oneUiFloatingGlass
+            : Colors.white.withOpacity(context.oneUiDark ? 0.025 : 0.075));
+    final effectivePadding =
+        padding ??
+        EdgeInsets.symmetric(
+          horizontal: compact ? 14 : 18,
+          vertical: compact ? 10 : 14,
+        );
+
+    final surface = OneUi9Glass(
+      radius: radius,
+      blur: 26,
+      showShadow: showShadow && enabled,
+      clear: true,
+      tint: effectiveTint,
+      borderColor: active ? accent.withOpacity(0.50) : context.oneUiOutline,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radius),
+          onTap: onPressed,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: compact ? 42 : 50),
+            child: Padding(
+              padding: effectivePadding,
+              child: IconTheme(
+                data: IconThemeData(
+                  color: contentColor,
+                  size: compact ? 19 : 22,
+                ),
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(
+                    color: contentColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  child: Row(
+                    mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (icon != null) ...[icon!, const SizedBox(width: 9)],
+                      if (expand)
+                        Expanded(child: Center(child: child))
+                      else
+                        child,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: expand
+          ? SizedBox(width: double.infinity, child: surface)
+          : surface,
+    );
+  }
+}
+
+class OneUi9GlassChip extends StatelessWidget {
+  const OneUi9GlassChip({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.selected = false,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final IconData? icon;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return OneUi9GlassButton(
+      onPressed: onTap,
+      compact: true,
+      active: selected,
+      radius: 21,
+      icon: icon == null ? null : Icon(icon),
+      child: Text(label),
+    );
+  }
+}
+
+/// Floating glass seek/progress control shared by the mini-player and the full
+/// player. It remains usable as a seek bar when [onChanged] is provided.
+class OneUi9FloatingProgressBar extends StatelessWidget {
+  const OneUi9FloatingProgressBar({
+    super.key,
+    required this.value,
+    this.bufferedValue,
+    this.onChanged,
+    this.height = 24,
+    this.trackHeight = 6,
+    this.showThumb = true,
+    this.showShadow = true,
+  });
+
+  final double value;
+  final double? bufferedValue;
+  final ValueChanged<double>? onChanged;
+  final double height;
+  final double trackHeight;
+  final bool showThumb;
+  final bool showShadow;
+
+  void _update(double dx, double width) {
+    if (onChanged == null || width <= 0) return;
+    onChanged!((dx / width).clamp(0.0, 1.0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final played = value.clamp(0.0, 1.0).toDouble();
+    final buffered = (bufferedValue ?? played).clamp(played, 1.0).toDouble();
+    final accent = Theme.of(context).colorScheme.primary;
+
+    return Semantics(
+      slider: onChanged != null,
+      value: '${(played * 100).round()}%',
+      child: OneUi9Glass(
+        radius: height / 2,
+        blur: 28,
+        showShadow: showShadow,
+        clear: true,
+        padding: EdgeInsets.symmetric(
+          horizontal: showThumb ? 8 : 5,
+          vertical: 4,
+        ),
+        tint: context.oneUiFloatingGlassStrong,
+        child: SizedBox(
+          height: height,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final availableThumbHeight = height - 4;
+              final thumbSize = showThumb
+                  ? (availableThumbHeight < 18 ? availableThumbHeight : 18.0)
+                  : 0.0;
+              final thumbLeft = (width - thumbSize) * played;
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: onChanged == null
+                    ? null
+                    : (details) => _update(details.localPosition.dx, width),
+                onHorizontalDragUpdate: onChanged == null
+                    ? null
+                    : (details) => _update(details.localPosition.dx, width),
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Container(
+                      height: trackHeight,
+                      decoration: BoxDecoration(
+                        color: context.oneUiSecondary.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: buffered,
+                      child: Container(
+                        height: trackHeight,
+                        decoration: BoxDecoration(
+                          color: accent.withOpacity(0.22),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: played,
+                      child: Container(
+                        height: trackHeight,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [OneUi9.accentSoft, accent, OneUi9.violet],
+                          ),
+                          borderRadius: BorderRadius.circular(99),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withOpacity(0.38),
+                              blurRadius: 9,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (showThumb)
+                      Positioned(
+                        left: thumbLeft,
+                        child: Container(
+                          width: thumbSize,
+                          height: thumbSize,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: context.oneUiDark
+                                ? const Color(0xFFE7EDFF)
+                                : Colors.white,
+                            border: Border.all(
+                              color: accent.withOpacity(0.72),
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withOpacity(0.40),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -470,7 +867,8 @@ class OneUi9PageHeader extends StatelessWidget {
                 maxLines: large ? 2 : 1,
                 overflow: TextOverflow.ellipsis,
                 style: large
-                    ? Theme.of(context).textTheme.displaySmall?.copyWith(fontSize: 38, height: 1.02)
+                    ? Theme.of(context).textTheme.displaySmall
+                          ?.copyWith(fontSize: 38, height: 1.02)
                     : Theme.of(context).textTheme.headlineSmall,
               ),
             ),
@@ -487,10 +885,8 @@ class OneUi9PageHeader extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             subtitle!,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: context.oneUiSecondary,
-                  height: 1.35,
-                ),
+            style: Theme.of(context).textTheme.bodyLarge
+                ?.copyWith(color: context.oneUiSecondary, height: 1.35),
           ),
         ],
       ],
@@ -531,7 +927,11 @@ class OneUi9EmptyState extends StatelessWidget {
                     colors: [OneUi9.accentSoft, OneUi9.violet],
                   ),
                   boxShadow: [
-                    BoxShadow(color: OneUi9.accent.withOpacity(0.24), blurRadius: 24, offset: const Offset(0, 10)),
+                    BoxShadow(
+                      color: OneUi9.accent.withOpacity(0.24),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
                   ],
                 ),
                 child: Icon(icon, color: const Color(0xFF10234A), size: 34),
@@ -540,7 +940,8 @@ class OneUi9EmptyState extends StatelessWidget {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(height: 1.35),
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(height: 1.35),
               ),
             ],
           ),

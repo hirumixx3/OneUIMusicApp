@@ -32,7 +32,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() => _showLyrics = !_showLyrics);
   }
 
-  void _ensureLyricsLoaded(music_provider.MusicPlayerProvider provider, AudioTrack track) {
+  void _ensureLyricsLoaded(
+    music_provider.MusicPlayerProvider provider,
+    AudioTrack track,
+  ) {
     if (_lastLyricsTrackKey == track.libraryKey) return;
     _lastLyricsTrackKey = track.libraryKey;
     _showLyrics = false;
@@ -62,16 +65,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
             },
           ),
           actions: [
-            TextButton(
+            OneUi9GlassButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
+              compact: true,
               child: Text(t.cancel),
             ),
-            FilledButton(
+            OneUi9GlassButton(
               onPressed: () {
                 final name = controller.text.trim();
                 if (name.isEmpty) return;
                 Navigator.of(dialogContext).pop(name);
               },
+              compact: true,
+              active: true,
               child: Text(t.create),
             ),
           ],
@@ -102,12 +108,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     Expanded(
                       child: Text(
                         t.addToPlaylist,
-                        style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                        style: Theme.of(sheetContext).textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                     ),
-                    IconButton(
+                    OneUi9IconButton(
                       onPressed: () => Navigator.of(sheetContext).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                      icon: Icons.close_rounded,
+                      size: 40,
+                      iconSize: 21,
                     ),
                   ],
                 ),
@@ -128,16 +137,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ListTile(
                           leading: const Icon(Icons.queue_music_rounded),
                           title: Text(playlist.name),
-                          subtitle: Text(t.playlistSongCount(playlist.tracks.length)),
-                          trailing: playlist.tracks.any((item) => item.libraryKey == track.libraryKey)
+                          subtitle: Text(
+                            t.playlistSongCount(playlist.tracks.length),
+                          ),
+                          trailing:
+                              playlist.tracks.any(
+                                (item) => item.libraryKey == track.libraryKey,
+                              )
                               ? const Icon(Icons.check_rounded)
                               : null,
                           onTap: () async {
-                            await provider.addTrackToUserPlaylist(playlist.id, track);
+                            await provider.addTrackToUserPlaylist(
+                              playlist.id,
+                              track,
+                            );
                             if (!mounted) return;
                             Navigator.of(sheetContext).pop();
                             messenger.showSnackBar(
-                              SnackBar(content: Text(t.addedToPlaylist(track.title, playlist.name))),
+                              SnackBar(
+                                content: Text(
+                                  t.addedToPlaylist(track.title, playlist.name),
+                                ),
+                              ),
                             );
                           },
                         ),
@@ -146,13 +167,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         title: Text(t.createNewPlaylist),
                         onTap: () async {
                           Navigator.of(sheetContext).pop();
-                          final name = (await _promptPlaylistName() ?? '').trim();
+                          final name = (await _promptPlaylistName() ?? '')
+                              .trim();
                           if (name.isEmpty) return;
-                          final created = await provider.createUserPlaylist(name);
-                          await provider.addTrackToUserPlaylist(created.id, track);
+                          final created = await provider.createUserPlaylist(
+                            name,
+                          );
+                          await provider.addTrackToUserPlaylist(
+                            created.id,
+                            track,
+                          );
                           if (!mounted) return;
                           messenger.showSnackBar(
-                            SnackBar(content: Text(t.addedToPlaylist(track.title, created.name))),
+                            SnackBar(
+                              content: Text(
+                                t.addedToPlaylist(track.title, created.name),
+                              ),
+                            ),
                           );
                         },
                       ),
@@ -167,21 +198,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  List<MapEntry<String, String>> _detailsFor(AudioTrack track, Duration effectiveDuration) {
+  List<MapEntry<String, String>> _detailsFor(
+    AudioTrack track,
+    Duration effectiveDuration,
+  ) {
     final details = <MapEntry<String, String>>[
       MapEntry('Nome', track.title),
       MapEntry('Artista', track.artist),
       MapEntry('Álbum', track.album),
-      if ((track.albumArtist ?? '').trim().isNotEmpty) MapEntry('Artista do álbum', track.albumArtist!.trim()),
-      if (track.trackNumberInt > 0) MapEntry('Número da faixa', '${track.trackNumberInt}'),
-      if (track.discNumberInt > 0) MapEntry('Número do disco', '${track.discNumberInt}'),
+      if ((track.albumArtist ?? '').trim().isNotEmpty)
+        MapEntry('Artista do álbum', track.albumArtist!.trim()),
+      if (track.trackNumberInt > 0)
+        MapEntry('Número da faixa', '${track.trackNumberInt}'),
+      if (track.discNumberInt > 0)
+        MapEntry('Número do disco', '${track.discNumberInt}'),
       if (track.yearInt > 0) MapEntry('Ano', '${track.yearInt}'),
-      if ((track.genre ?? '').trim().isNotEmpty) MapEntry('Gênero', track.genre!.trim()),
-      if ((track.composer ?? '').trim().isNotEmpty) MapEntry('Compositor', track.composer!.trim()),
-      if ((track.author ?? '').trim().isNotEmpty) MapEntry('Autor', track.author!.trim()),
-      if ((track.writer ?? '').trim().isNotEmpty) MapEntry('Escritor', track.writer!.trim()),
-      if ((track.bitrate ?? '').trim().isNotEmpty) MapEntry('Bitrate', track.bitrate!.trim()),
-      if (track.mimeType.trim().isNotEmpty) MapEntry('Tipo', track.mimeType.trim()),
+      if ((track.genre ?? '').trim().isNotEmpty)
+        MapEntry('Gênero', track.genre!.trim()),
+      if ((track.composer ?? '').trim().isNotEmpty)
+        MapEntry('Compositor', track.composer!.trim()),
+      if ((track.author ?? '').trim().isNotEmpty)
+        MapEntry('Autor', track.author!.trim()),
+      if ((track.writer ?? '').trim().isNotEmpty)
+        MapEntry('Escritor', track.writer!.trim()),
+      if ((track.bitrate ?? '').trim().isNotEmpty)
+        MapEntry('Bitrate', track.bitrate!.trim()),
+      if (track.mimeType.trim().isNotEmpty)
+        MapEntry('Tipo', track.mimeType.trim()),
       MapEntry('Duração', _format(effectiveDuration)),
       if (track.path.trim().isNotEmpty) MapEntry('Caminho', track.path.trim()),
       if (track.uri.trim().isNotEmpty) MapEntry('URI', track.uri.trim()),
@@ -219,10 +262,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
               const SizedBox(width: 8),
               Text(
                 title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: secondary,
-                    ),
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w800, color: secondary),
               ),
             ],
           ),
@@ -235,10 +276,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 onTap: () => playQueuedTrack(item),
                 child: OneUi9Glass(
                   radius: 18,
-                  blur: 10,
-                  showShadow: false,
+                  blur: 24,
+                  clear: true,
+                  showShadow: true,
+                  tint: context.oneUiFloatingGlass,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                     child: Row(
                       children: [
                         Stack(
@@ -247,7 +293,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               width: 42,
                               height: 42,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF7395FF).withOpacity(0.12),
+                                color: const Color(0xFF7395FF)
+                                    .withOpacity(0.12),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: border),
                               ),
@@ -256,7 +303,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 track: item,
                                 borderRadius: BorderRadius.circular(12),
                                 fit: BoxFit.cover,
-                                fallbackIcon: const Icon(Icons.music_note_rounded, size: 18, color: Colors.white),
+                                fallbackIcon: const Icon(
+                                  Icons.music_note_rounded,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                             if (item.libraryKey == currentTrack.libraryKey)
@@ -287,14 +338,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 item.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                                style: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 item.artist,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: secondary),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: secondary),
                               ),
                             ],
                           ),
@@ -302,7 +355,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         const SizedBox(width: 12),
                         Text(
                           _format(item.duration),
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: secondary),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(color: secondary),
                         ),
                       ],
                     ),
@@ -325,7 +379,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         children: [
           Text(
             t.playQueue,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w800),
           ),
           if (nextTracks.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -333,7 +388,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ],
           if (previousTracks.isNotEmpty) ...[
             if (nextTracks.isNotEmpty) const SizedBox(height: 6),
-            buildGroup(t.previousInQueue, previousTracks, Icons.skip_previous_rounded),
+            buildGroup(
+              t.previousInQueue,
+              previousTracks,
+              Icons.skip_previous_rounded,
+            ),
           ],
         ],
       ),
@@ -349,9 +408,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (track == null) {
       return Scaffold(
-        body: SafeArea(
-          child: OneUi9EmptyState(message: t.noTrackPlaying),
-        ),
+        body: SafeArea(child: OneUi9EmptyState(message: t.noTrackPlaying)),
       );
     }
 
@@ -363,135 +420,164 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final artworkSize = (screenWidth - 56).clamp(260.0, 360.0).toDouble();
     final secondary = context.oneUiSecondary;
-    final surface = context.oneUiGlassStrong;
-    final waitingRemoteStart = false; // não bloqueia a tela com 'preparando' para streams online
-    final border = context.oneUiOutline;
+    final waitingRemoteStart =
+        false; // não bloqueia a tela com 'preparando' para streams online
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
-            child: StreamBuilder<Duration?>(
-              stream: provider.playbackDurationStream,
-              builder: (context, durationSnapshot) {
-                final totalDuration = durationSnapshot.data ?? provider.playbackDuration;
-                final trackDetails = _detailsFor(track, totalDuration);
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+          child: StreamBuilder<Duration?>(
+            stream: provider.playbackDurationStream,
+            builder: (context, durationSnapshot) {
+              final totalDuration =
+                  durationSnapshot.data ?? provider.playbackDuration;
+              final trackDetails = _detailsFor(track, totalDuration);
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Row(
-                      children: [
-                        _topBarActionButton(
-                          icon: Icons.arrow_back_ios_new_rounded,
-                          onPressed: () => Navigator.pop(context),
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      _topBarActionButton(
+                        icon: Icons.arrow_back_ios_new_rounded,
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          t.playingNow,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            t.playingNow,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        width: math.min(
+                          MediaQuery.of(context).size.width * 0.5,
+                          210,
                         ),
-                        const SizedBox(width: 6),
-                        SizedBox(
-                          width: math.min(MediaQuery.of(context).size.width * 0.5, 210),
-                          child: Align(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
                             alignment: Alignment.centerRight,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerRight,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _topBarActionButton(
-                                    icon: Icons.equalizer_rounded,
-                                    onPressed: () => Navigator.of(context).push(
-                                      MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _topBarActionButton(
+                                  icon: Icons.equalizer_rounded,
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const EqualizerScreen(),
                                     ),
                                   ),
+                                ),
+                                _topBarActionButton(
+                                  icon: Icons.playlist_add_rounded,
+                                  onPressed: () =>
+                                      _showAddToPlaylistSheet(track),
+                                ),
+                                if (track.isRemote)
                                   _topBarActionButton(
-                                    icon: Icons.playlist_add_rounded,
-                                    onPressed: () => _showAddToPlaylistSheet(track),
-                                  ),
-                                  if (track.isRemote)
-                                    _topBarActionButton(
-                                      onPressed: provider.isDownloadInProgress(track)
-                                          ? null
-                                          : () async {
-                                              final messenger = ScaffoldMessenger.of(context);
-                                              messenger.showSnackBar(
-                                                SnackBar(content: Text('Iniciando download de ${track.title}...')),
-                                              );
-                                              try {
-                                                final downloaded = await provider.downloadTrack(track);
-                                                if (!mounted) return;
-                                                messenger.showSnackBar(
-                                                  SnackBar(content: Text('Baixada em ${downloaded.path}')),
-                                                );
-                                              } catch (error) {
-                                                if (!mounted) return;
-                                                messenger.showSnackBar(
-                                                  SnackBar(content: Text('${t.downloadFailed}: $error')),
-                                                );
-                                              }
-                                            },
-                                      iconWidget: provider.isDownloadInProgress(track)
-                                          ? SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                value: provider.downloadProgressFor(track),
+                                    onPressed:
+                                        provider.isDownloadInProgress(track)
+                                        ? null
+                                        : () async {
+                                            final messenger =
+                                                ScaffoldMessenger.of(context);
+                                            messenger.showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Iniciando download de ${track.title}...',
+                                                ),
                                               ),
-                                            )
-                                          : Icon(
-                                              provider.isDownloaded(track)
-                                                  ? Icons.download_done_rounded
-                                                  : Icons.download_rounded,
+                                            );
+                                            try {
+                                              final downloaded = await provider
+                                                  .downloadTrack(track);
+                                              if (!mounted) return;
+                                              messenger.showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Baixada em ${downloaded.path}',
+                                                  ),
+                                                ),
+                                              );
+                                            } catch (error) {
+                                              if (!mounted) return;
+                                              messenger.showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    '${t.downloadFailed}: $error',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                    iconWidget:
+                                        provider.isDownloadInProgress(track)
+                                        ? SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              value: provider
+                                                  .downloadProgressFor(track),
                                             ),
-                                    ),
-                                  _topBarActionButton(
-                                    onPressed: () => provider.toggleFavorite(track),
-                                    iconWidget: Icon(
-                                      provider.isFavorite(track)
-                                          ? Icons.favorite_rounded
-                                          : Icons.favorite_border_rounded,
-                                      color: provider.isFavorite(track) ? Colors.redAccent : null,
-                                    ),
+                                          )
+                                        : Icon(
+                                            provider.isDownloaded(track)
+                                                ? Icons.download_done_rounded
+                                                : Icons.download_rounded,
+                                          ),
                                   ),
-                                ],
-                              ),
+                                _topBarActionButton(
+                                  onPressed: () =>
+                                      provider.toggleFavorite(track),
+                                  iconWidget: Icon(
+                                    provider.isFavorite(track)
+                                        ? Icons.favorite_rounded
+                                        : Icons.favorite_border_rounded,
+                                    color: provider.isFavorite(track)
+                                        ? Colors.redAccent
+                                        : null,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: artworkSize,
-                      height: artworkSize,
-                      child: OneUi9Glass(
-                        radius: 38,
-                        blur: 24,
-                        strong: true,
-                        padding: const EdgeInsets.all(8),
-                        child: Stack(
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: artworkSize,
+                    height: artworkSize,
+                    child: OneUi9Glass(
+                      radius: 38,
+                      blur: 24,
+                      strong: true,
+                      padding: const EdgeInsets.all(8),
+                      child: Stack(
                         children: [
                           Positioned.fill(
                             child: GestureDetector(
-                              onTap: hasLyrics ? () => _toggleLyrics(hasLyrics: hasLyrics) : null,
+                              onTap: hasLyrics
+                                  ? () => _toggleLyrics(hasLyrics: hasLyrics)
+                                  : null,
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 220),
                                 child: showLyrics
                                     ? Padding(
-                                        key: ValueKey('lyrics-${track.libraryKey}'),
+                                        key: ValueKey(
+                                          'lyrics-${track.libraryKey}',
+                                        ),
                                         padding: const EdgeInsets.all(12),
                                         child: _LyricsArtworkCard(
                                           lyrics: lyricsText,
@@ -500,7 +586,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                       )
                                     : SizedBox.expand(
                                         child: _CoverArtworkCard(
-                                          key: ValueKey('cover-${track.libraryKey}'),
+                                          key: ValueKey(
+                                            'cover-${track.libraryKey}',
+                                          ),
                                           track: track,
                                         ),
                                       ),
@@ -512,17 +600,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               left: 24,
                               bottom: 24,
                               child: GestureDetector(
-                                onTap: hasLyrics ? () => _toggleLyrics(hasLyrics: hasLyrics) : null,
+                                onTap: hasLyrics
+                                    ? () => _toggleLyrics(hasLyrics: hasLyrics)
+                                    : null,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.black.withOpacity(0.42),
                                     borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(color: Colors.white.withOpacity(0.16)),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.16),
+                                    ),
                                   ),
                                   child: Text(
-                                    loadingLyrics && !hasLyrics ? 'Buscando letra...' : 'Mostrar letra',
-                                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                    loadingLyrics && !hasLyrics
+                                        ? 'Buscando letra...'
+                                        : 'Mostrar letra',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge
+                                        ?.copyWith(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -530,231 +630,231 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ),
                             ),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    Text(
-                      track.title,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${track.artist} • ${track.album}',
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: secondary,
-                            height: 1.35,
-                          ),
-                    ),
-                    const SizedBox(height: 18),
-                    if (waitingRemoteStart)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2.2),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Preparando reprodução online...',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: secondary),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _smallActionChip(
-                          context,
-                          icon: provider.shuffleEnabled ? Icons.shuffle_on_rounded : Icons.shuffle_rounded,
-                          label: t.shuffle,
-                          active: provider.shuffleEnabled,
-                          onTap: provider.toggleShuffle,
-                        ),
-                        const SizedBox(width: 10),
-                        _smallActionChip(
-                          context,
-                          icon: Icons.repeat_rounded,
-                          label: provider.repeatLabel,
-                          active: provider.repeatMode != music_provider.RepeatMode.off,
-                          onTap: provider.cycleRepeatMode,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    if (waitingRemoteStart)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2.2),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Preparando reprodução online...',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: secondary),
-                            ),
-                          ],
-                        ),
-                      ),
-                    StreamBuilder<Duration>(
-                      stream: provider.playbackPositionStream,
-                      builder: (context, snapshot) {
-                        final position = snapshot.data ?? provider.playbackPosition;
-                        final max = totalDuration.inMilliseconds <= 0
-                            ? 1.0
-                            : totalDuration.inMilliseconds.toDouble();
-                        final value = position.inMilliseconds.clamp(0, max.toInt()).toDouble();
-                        return Column(
-                          children: [
-                            MonetWavyProgressBar(
-                              value: value,
-                              min: 0,
-                              max: max,
-                              onChanged: (newValue) {
-                                provider.seek(Duration(milliseconds: newValue.toInt()));
-                              },
-                              playedColor: Theme.of(context).colorScheme.primary,
-                              remainingColor: context.oneUiSecondary.withOpacity(0.30),
-                              height: 34,
-                            ),
-                            Row(
-                              children: [
-                                Text(_format(position)),
-                                const Spacer(),
-                                Text(_format(totalDuration)),
-                              ],
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton.filledTonal(
-                          onPressed: provider.previousTrack,
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(62, 62),
-                            backgroundColor: surface,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(22),
-                              side: BorderSide(color: border),
-                            ),
-                          ),
-                          iconSize: 34,
-                          icon: const Icon(Icons.skip_previous_rounded),
-                        ),
-                        const SizedBox(width: 16),
-                        FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: isDark ? OneUi9.accentSoft : OneUi9.accent,
-                            foregroundColor: const Color(0xFF0D172B),
-                            shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(24),
-                            shadowColor: OneUi9.accent.withOpacity(0.44),
-                            elevation: 8,
-                          ),
-                          onPressed: provider.togglePlayback,
-                          child: Icon(
-                            provider.isPlaybackPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                            size: 42,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        IconButton.filledTonal(
-                          onPressed: provider.nextTrack,
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(62, 62),
-                            backgroundColor: surface,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(22),
-                              side: BorderSide(color: border),
-                            ),
-                          ),
-                          iconSize: 34,
-                          icon: const Icon(Icons.skip_next_rounded),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 22),
-                    _queueSection(context, provider, track),
-                    if (provider.queuePreviousTracks.isNotEmpty || provider.queueNextTracks.isNotEmpty)
-                      const SizedBox(height: 18),
-                    OneUi9Glass(
-                      padding: const EdgeInsets.all(16),
-                      radius: 28,
-                      blur: 18,
-                      strong: true,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    track.title,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${track.artist} • ${track.album}',
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(color: secondary, height: 1.35),
+                  ),
+                  const SizedBox(height: 18),
+                  if (waitingRemoteStart)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            t.musicTags,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2.2),
                           ),
-                          const SizedBox(height: 14),
-                          ...trackDetails.map(
-                            (entry) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  SizedBox(
-                                    width: 118,
-                                    child: Text(
-                                      '${entry.key}:',
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                            color: secondary,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Text(
-                                      entry.value,
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                            height: 1.35,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Preparando reprodução online...',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: secondary),
                           ),
                         ],
                       ),
                     ),
-                  ],
-                );
-              },
-            ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _smallActionChip(
+                        context,
+                        icon: provider.shuffleEnabled
+                            ? Icons.shuffle_on_rounded
+                            : Icons.shuffle_rounded,
+                        label: t.shuffle,
+                        active: provider.shuffleEnabled,
+                        onTap: provider.toggleShuffle,
+                      ),
+                      const SizedBox(width: 10),
+                      _smallActionChip(
+                        context,
+                        icon: Icons.repeat_rounded,
+                        label: provider.repeatLabel,
+                        active:
+                            provider.repeatMode !=
+                            music_provider.RepeatMode.off,
+                        onTap: provider.cycleRepeatMode,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  if (waitingRemoteStart)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2.2),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Preparando reprodução online...',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: secondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  StreamBuilder<Duration>(
+                    stream: provider.playbackPositionStream,
+                    builder: (context, snapshot) {
+                      final position =
+                          snapshot.data ?? provider.playbackPosition;
+                      final max = totalDuration.inMilliseconds <= 0
+                          ? 1.0
+                          : totalDuration.inMilliseconds.toDouble();
+                      final value = position.inMilliseconds
+                          .clamp(0, max.toInt())
+                          .toDouble();
+                      return Column(
+                        children: [
+                          OneUi9FloatingProgressBar(
+                            value: max <= 0 ? 0 : value / max,
+                            bufferedValue: max <= 0
+                                ? 0
+                                : (provider
+                                              .playbackBufferedPosition
+                                              .inMilliseconds /
+                                          max)
+                                      .clamp(0.0, 1.0)
+                                      .toDouble(),
+                            onChanged: (fraction) {
+                              provider.seek(
+                                Duration(
+                                  milliseconds: (max * fraction).round(),
+                                ),
+                              );
+                            },
+                            height: 28,
+                            trackHeight: 7,
+                            showThumb: true,
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Text(_format(position)),
+                              const Spacer(),
+                              Text(_format(totalDuration)),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      OneUi9IconButton(
+                        onPressed: provider.previousTrack,
+                        size: 62,
+                        iconSize: 34,
+                        icon: Icons.skip_previous_rounded,
+                      ),
+                      const SizedBox(width: 16),
+                      OneUi9IconButton(
+                        onPressed: provider.togglePlayback,
+                        icon: provider.isPlaybackPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 78,
+                        iconSize: 42,
+                        active: true,
+                      ),
+                      const SizedBox(width: 16),
+                      OneUi9IconButton(
+                        onPressed: provider.nextTrack,
+                        size: 62,
+                        iconSize: 34,
+                        icon: Icons.skip_next_rounded,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  _queueSection(context, provider, track),
+                  if (provider.queuePreviousTracks.isNotEmpty ||
+                      provider.queueNextTracks.isNotEmpty)
+                    const SizedBox(height: 18),
+                  OneUi9Glass(
+                    padding: const EdgeInsets.all(16),
+                    radius: 28,
+                    blur: 18,
+                    strong: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t.musicTags,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 14),
+                        ...trackDetails.map(
+                          (entry) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 118,
+                                  child: Text(
+                                    '${entry.key}:',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: secondary,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    entry.value,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(height: 1.35),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
+        ),
       ),
     );
   }
-
 
   Widget _topBarActionButton({
     IconData? icon,
@@ -763,13 +863,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }) {
     return OneUi9Glass(
       radius: 21,
-      blur: 12,
-      showShadow: false,
+      blur: 18,
+      showShadow: true,
+      clear: true,
+      tint: context.oneUiFloatingGlass,
       child: SizedBox.square(
         dimension: 42,
         child: IconButton(
           visualDensity: VisualDensity.compact,
           padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
+            side: BorderSide.none,
+          ),
           onPressed: onPressed,
           icon: iconWidget ?? Icon(icon),
         ),
@@ -784,12 +891,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     required bool active,
     required VoidCallback onTap,
   }) {
-    return FilterChip(
+    return OneUi9GlassChip(
       selected: active,
-      onSelected: (_) => onTap(),
-      label: Text(label),
-      avatar: Icon(icon, size: 18),
-      showCheckmark: false,
+      onTap: onTap,
+      label: label,
+      icon: icon,
     );
   }
 }
@@ -816,14 +922,22 @@ class _CoverArtworkCard extends StatelessWidget {
                   track: track,
                   borderRadius: BorderRadius.circular(28),
                   fit: BoxFit.cover,
-                  fallbackIcon: const Icon(Icons.music_note_rounded, size: 120, color: Colors.white),
+                  fallbackIcon: const Icon(
+                    Icons.music_note_rounded,
+                    size: 120,
+                    color: Colors.white,
+                  ),
                 ),
               )
             : LazyArtwork(
                 track: track,
                 borderRadius: BorderRadius.circular(28),
                 fit: BoxFit.cover,
-                fallbackIcon: const Icon(Icons.music_note_rounded, size: 120, color: Colors.white),
+                fallbackIcon: const Icon(
+                  Icons.music_note_rounded,
+                  size: 120,
+                  color: Colors.white,
+                ),
               ),
       ),
     );
@@ -861,24 +975,31 @@ class _LyricsArtworkCard extends StatelessWidget {
           Text(
             'Letras de LrcLib',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? Colors.white70 : Colors.black54,
-                ),
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
           ),
           const SizedBox(height: 12),
           Expanded(
             child: lines.isEmpty
                 ? SingleChildScrollView(
                     child: Text(
-                      lyrics.replaceAll(RegExp(r'\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]'), '').trim(),
+                      lyrics
+                          .replaceAll(
+                            RegExp(r'\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]'),
+                            '',
+                          )
+                          .trim(),
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            height: 1.45,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
+                        height: 1.45,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
                     ),
                   )
                 : StreamBuilder<Duration>(
-                    stream: context.read<music_provider.MusicPlayerProvider>().playbackPositionStream,
+                    stream: context
+                        .read<music_provider.MusicPlayerProvider>()
+                        .playbackPositionStream,
                     builder: (context, snapshot) {
                       final position = snapshot.data ?? Duration.zero;
                       var active = 0;
@@ -895,12 +1016,15 @@ class _LyricsArtworkCard extends StatelessWidget {
                           final isActive = index == active;
                           return AnimatedDefaultTextStyle(
                             duration: const Duration(milliseconds: 180),
-                            style: Theme.of(context).textTheme.headlineSmall!.copyWith(
+                            style: Theme.of(context).textTheme.headlineSmall!
+                                .copyWith(
                                   fontWeight: FontWeight.w900,
                                   height: 1.18,
                                   color: isActive
                                       ? (isDark ? Colors.white : Colors.black)
-                                      : (isDark ? Colors.white24 : Colors.black26),
+                                      : (isDark
+                                            ? Colors.white24
+                                            : Colors.black26),
                                   fontSize: isActive ? 26 : 22,
                                 ),
                             child: Padding(
@@ -930,11 +1054,16 @@ class _LyricsArtworkCard extends StatelessWidget {
       final millis = fracRaw.length == 3
           ? int.tryParse(fracRaw) ?? 0
           : fracRaw.length == 2
-              ? (int.tryParse(fracRaw) ?? 0) * 10
-              : (int.tryParse(fracRaw) ?? 0) * 100;
+          ? (int.tryParse(fracRaw) ?? 0) * 10
+          : (int.tryParse(fracRaw) ?? 0) * 100;
       final text = (match.group(4) ?? '').trim();
       if (text.isEmpty) continue;
-      result.add(_SyncedLyricLine(Duration(minutes: minutes, seconds: seconds, milliseconds: millis), text));
+      result.add(
+        _SyncedLyricLine(
+          Duration(minutes: minutes, seconds: seconds, milliseconds: millis),
+          text,
+        ),
+      );
     }
     result.sort((a, b) => a.time.compareTo(b.time));
     return result;
@@ -946,7 +1075,6 @@ class _SyncedLyricLine {
   final Duration time;
   final String text;
 }
-
 
 class MonetWavyProgressBar extends StatefulWidget {
   const MonetWavyProgressBar({
@@ -972,12 +1100,14 @@ class MonetWavyProgressBar extends StatefulWidget {
   State<MonetWavyProgressBar> createState() => _MonetWavyProgressBarState();
 }
 
-class _MonetWavyProgressBarState extends State<MonetWavyProgressBar> with SingleTickerProviderStateMixin {
+class _MonetWavyProgressBarState extends State<MonetWavyProgressBar>
+    with SingleTickerProviderStateMixin {
   bool _dragging = false;
   double? _dragValue;
   late final AnimationController _waveController;
 
-  double get _effectiveValue => (_dragging ? _dragValue : widget.value) ?? widget.value;
+  double get _effectiveValue =>
+      (_dragging ? _dragValue : widget.value) ?? widget.value;
 
   @override
   void initState() {
@@ -1007,7 +1137,9 @@ class _MonetWavyProgressBarState extends State<MonetWavyProgressBar> with Single
   @override
   Widget build(BuildContext context) {
     final value = _effectiveValue.clamp(widget.min, widget.max);
-    final totalRange = (widget.max - widget.min) <= 0 ? 1.0 : (widget.max - widget.min);
+    final totalRange = (widget.max - widget.min) <= 0
+        ? 1.0
+        : (widget.max - widget.min);
     final playedFraction = ((value - widget.min) / totalRange).clamp(0.0, 1.0);
 
     return SizedBox(
@@ -1027,7 +1159,8 @@ class _MonetWavyProgressBarState extends State<MonetWavyProgressBar> with Single
               });
               _updateValue(details.localPosition, width);
             },
-            onHorizontalDragUpdate: (details) => _updateValue(details.localPosition, width),
+            onHorizontalDragUpdate: (details) =>
+                _updateValue(details.localPosition, width),
             onHorizontalDragEnd: (_) {
               setState(() {
                 _dragging = false;
@@ -1107,7 +1240,11 @@ class _MonetWavyProgressPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 7
       ..strokeCap = StrokeCap.round;
-    canvas.drawLine(Offset(playedWidth, centerY), Offset(size.width, centerY), remainingPaint);
+    canvas.drawLine(
+      Offset(playedWidth, centerY),
+      Offset(size.width, centerY),
+      remainingPaint,
+    );
 
     if (playedWidth <= 0) return;
 
@@ -1139,9 +1276,15 @@ class _MonetWavyProgressPainter extends CustomPainter {
     final phaseShift = phase * wavelength * 1.8;
 
     for (double x = 0; x <= playedWidth; x += 1) {
-      final progress = playedWidth <= 0 ? 0.0 : (x / playedWidth).clamp(0.0, 1.0);
+      final progress = playedWidth <= 0
+          ? 0.0
+          : (x / playedWidth).clamp(0.0, 1.0);
       final envelope = 0.82 + (0.18 * math.sin(progress * math.pi));
-      final y = baseline + math.sin(((x + phaseShift) / wavelength) * 2 * math.pi) * amplitude * envelope;
+      final y =
+          baseline +
+          math.sin(((x + phaseShift) / wavelength) * 2 * math.pi) *
+              amplitude *
+              envelope;
       if (x == 0) {
         path.moveTo(x, y);
       } else {

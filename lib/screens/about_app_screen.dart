@@ -31,80 +31,88 @@ class AboutAppScreen extends StatelessWidget {
               large: true,
             ),
             const SizedBox(height: 24),
-          _SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  t.aboutApp,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 16),
-                _SelectableInfoTile(
-                  icon: Icons.code_rounded,
-                  title: t.developedBy,
-                  value: 'Higor',
-                ),
-                const SizedBox(height: 10),
-                _SelectableInfoTile(
-                  icon: Icons.equalizer_rounded,
-                  title: t.equalizer,
-                  value: t.equalizerOnlyAppAudio,
-                  helper: t.tapToOpen,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerScreen())),
-                ),
-                const SizedBox(height: 10),
-                _SelectableInfoTile(
-                  icon: Icons.chat_rounded,
-                  title: t.whatsapp,
-                  value: _phoneNumber,
-                  helper: t.tapToOpen,
-                  onTap: () => _openWhatsApp(context),
-                ),
-                const SizedBox(height: 10),
-                _SelectableInfoTile(
-                  icon: Icons.send_rounded,
-                  title: t.telegram,
-                  value: _phoneNumber,
-                  helper: t.tapToOpen,
-                  onTap: () => _openTelegram(context),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  t.language,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final language in AppLanguage.values)
-                      ChoiceChip(
-                        label: Text(t.labelForLanguage(language)),
-                        selected: provider.appLanguage == language,
-                        onSelected: (_) => context.read<MusicPlayerProvider>().setLanguage(language),
-                        showCheckmark: false,
+            _SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.aboutApp,
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 16),
+                  _SelectableInfoTile(
+                    icon: Icons.code_rounded,
+                    title: t.developedBy,
+                    value: 'Higor',
+                  ),
+                  const SizedBox(height: 10),
+                  _SelectableInfoTile(
+                    icon: Icons.equalizer_rounded,
+                    title: t.equalizer,
+                    value: t.equalizerOnlyAppAudio,
+                    helper: t.tapToOpen,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const EqualizerScreen(),
                       ),
-                  ],
-                ),
-              ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _SelectableInfoTile(
+                    icon: Icons.chat_rounded,
+                    title: t.whatsapp,
+                    value: _phoneNumber,
+                    helper: t.tapToOpen,
+                    onTap: () => _openWhatsApp(context),
+                  ),
+                  const SizedBox(height: 10),
+                  _SelectableInfoTile(
+                    icon: Icons.send_rounded,
+                    title: t.telegram,
+                    value: _phoneNumber,
+                    helper: t.tapToOpen,
+                    onTap: () => _openTelegram(context),
+                  ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.language,
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final language in AppLanguage.values)
+                        OneUi9GlassChip(
+                          label: t.labelForLanguage(language),
+                          selected: provider.appLanguage == language,
+                          onTap: () => context
+                              .read<MusicPlayerProvider>()
+                              .setLanguage(language),
+                          icon: provider.appLanguage == language
+                              ? Icons.check_rounded
+                              : Icons.language_rounded,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
-
-
 
   Future<void> _openWhatsApp(BuildContext context) async {
     final phoneDigits = _phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
@@ -124,7 +132,10 @@ class AboutAppScreen extends StatelessWidget {
     await _launchFirstAvailable(context, uris);
   }
 
-  Future<void> _launchFirstAvailable(BuildContext context, List<Uri> uris) async {
+  Future<void> _launchFirstAvailable(
+    BuildContext context,
+    List<Uri> uris,
+  ) async {
     for (final uri in uris) {
       try {
         if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -134,24 +145,20 @@ class AboutAppScreen extends StatelessWidget {
     }
     if (!context.mounted) return;
     final t = AppStrings.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(t.couldNotOpenLink)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(t.couldNotOpenLink)));
   }
 
   void _copy(BuildContext context, String label, String value) {
     Clipboard.setData(ClipboardData(text: value));
     final t = AppStrings.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(t.copied(label))),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(t.copied(label))));
   }
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.child,
-  });
+  const _SectionCard({required this.child});
 
   final Widget child;
 
@@ -184,7 +191,9 @@ class _SelectableInfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final secondary = Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black54;
+    final secondary = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
 
     return InkWell(
       borderRadius: BorderRadius.circular(21),
@@ -192,8 +201,10 @@ class _SelectableInfoTile extends StatelessWidget {
       child: OneUi9Glass(
         padding: const EdgeInsets.all(14),
         radius: 21,
-        blur: 10,
-        showShadow: false,
+        blur: 26,
+        clear: true,
+        showShadow: true,
+        tint: context.oneUiFloatingGlass,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -201,7 +212,8 @@ class _SelectableInfoTile extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(context.oneUiDark ? 0.24 : 0.14),
+                color: Theme.of(context).colorScheme.primary
+                    .withOpacity(context.oneUiDark ? 0.24 : 0.14),
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Icon(icon, color: Theme.of(context).colorScheme.primary),
@@ -213,7 +225,8 @@ class _SelectableInfoTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
                   SelectableText(
@@ -224,7 +237,8 @@ class _SelectableInfoTile extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       helper!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: secondary),
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: secondary),
                     ),
                   ],
                 ],
