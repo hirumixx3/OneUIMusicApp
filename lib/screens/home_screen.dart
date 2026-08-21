@@ -2949,9 +2949,16 @@ class _OnlineTabState extends State<_OnlineTab>
     required bool isDark,
     required double bottomPadding,
   }) {
-    final featuredSongs = songs.take(12).toList(growable: false);
+    final quickPicks = provider.onlineQuickPicks;
+    final listenAgain = provider.onlineListenAgain;
+    final personalizedSongs = provider.onlineRecommendedSongs.isNotEmpty
+        ? provider.onlineRecommendedSongs
+        : songs;
+    final featuredSongs = (quickPicks.isNotEmpty ? quickPicks : songs)
+        .take(12)
+        .toList(growable: false);
     final featuredPlaylists = playlists.take(12).toList(growable: false);
-    final pickSongs = songs.skip(12).take(24).toList(growable: false);
+    final pickSongs = personalizedSongs.take(24).toList(growable: false);
     final moodChips = const <String, String>{
       'Podcasts': 'podcasts música Brasil',
       'Energia': 'músicas animadas energia',
@@ -3008,7 +3015,9 @@ class _OnlineTabState extends State<_OnlineTab>
                 ),
                 const SizedBox(height: 26),
                 _YoutubeSectionHeader(
-                  title: 'Acesso rápido',
+                  title: provider.isLoggedIn && provider.accountName.trim().isNotEmpty
+                      ? 'Para ${provider.accountName.trim().split(RegExp(r'\s+')).first}'
+                      : 'Acesso rápido',
                   actionLabel: featuredSongs.isEmpty ? null : 'Ver tudo',
                   onActionTap: featuredSongs.isEmpty
                       ? null
@@ -3077,11 +3086,31 @@ class _OnlineTabState extends State<_OnlineTab>
               ),
             ),
           ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: provider.onlineFeedAuthenticated
+              ? 'Ouvir novamente da sua conta'
+              : 'Ouvir novamente',
+          songs: listenAgain,
+          take: 14,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Curtidas na sua conta',
+          songs: provider.onlineAccountLikedSongs,
+          take: 14,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Músicas salvas na sua conta',
+          songs: provider.onlineAccountLibrarySongs,
+          take: 14,
+        ),
         if (songs.isNotEmpty) ...[
           const SliverToBoxAdapter(child: SizedBox(height: 26)),
           SliverToBoxAdapter(
             child: _YoutubeSectionHeader(
-              title: 'Escolhas rápidas',
+              title: 'Escolhas para você',
               actionLabel: 'Ver tudo',
               onActionTap: () =>
                   _openTrackPlayer(context, songs.first, queue: songs),
@@ -3101,7 +3130,11 @@ class _OnlineTabState extends State<_OnlineTab>
                   child: _YoutubeSongRow(
                     track: track,
                     isFavorite: provider.isFavorite(track),
-                    onTap: () => _openTrackPlayer(context, track, queue: songs),
+                    onTap: () => _openTrackPlayer(
+                      context,
+                      track,
+                      queue: pickSongs.isEmpty ? songs : pickSongs,
+                    ),
                     onFavoriteTap: () => provider.toggleFavorite(track),
                   ),
                 );
@@ -3178,67 +3211,58 @@ class _OnlineTabState extends State<_OnlineTab>
         ],
         ..._metrolistPlaylistRailSlivers(
           context: context,
-          title: 'Playlists da comunidade em alta',
+          title: provider.onlineFeedAuthenticated
+              ? 'Playlists da sua conta e para você'
+              : 'Playlists em alta',
           playlists: provider.onlineDisplayPlaylists,
-          skip: 12,
-          take: 12,
+          take: 14,
         ),
         ..._metrolistSongRailSlivers(
           context: context,
-          title: 'Mixtapes criadas para você',
-          songs: songs,
-          skip: 18,
-          take: 12,
+          title: 'Descobertas baseadas no que você ouve',
+          songs: personalizedSongs,
+          skip: 12,
+          take: 14,
+        ),
+        ..._metrolistAlbumRailSlivers(
+          context: context,
+          title: 'Novos lançamentos',
+          albums: provider.onlineNewReleaseAlbums,
+          take: 14,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Músicas recém-lançadas',
+          songs: provider.onlineNewReleaseSongs,
+          take: 14,
+        ),
+        ..._metrolistAlbumRailSlivers(
+          context: context,
+          title: 'Álbuns salvos na sua conta',
+          albums: provider.onlineAccountAlbums,
+          take: 14,
         ),
         ..._metrolistAlbumRailSlivers(
           context: context,
           title: 'Álbuns para você',
           albums: provider.onlineDisplayAlbums,
-          take: 12,
+          skip: provider.onlineNewReleaseAlbums.length.clamp(0, 12).toInt(),
+          take: 14,
         ),
         ..._metrolistSongRailSlivers(
           context: context,
-          title: 'Ouvir de novo',
-          songs: provider.onlineHistoryTracks.isNotEmpty
-              ? provider.onlineHistoryTracks
-              : songs,
-          take: 12,
-        ),
-        ..._metrolistSongRailSlivers(
-          context: context,
-          title: 'Lançamentos',
-          songs: songs,
-          skip: 6,
-          take: 12,
-        ),
-        ..._metrolistSongRailSlivers(
-          context: context,
-          title: 'Em alta nos Shorts',
-          songs: songs.reversed.toList(growable: false),
-          take: 12,
-        ),
-        ..._metrolistSongRailSlivers(
-          context: context,
-          title: songs.isNotEmpty
-              ? 'Parecido com ${songs.first.artist.isEmpty ? songs.first.title : songs.first.artist}'
+          title: personalizedSongs.isNotEmpty
+              ? 'Parecido com ${personalizedSongs.first.artist.isEmpty ? personalizedSongs.first.title : personalizedSongs.first.artist}'
               : 'Parecido com o que você ouve',
-          songs: songs,
+          songs: personalizedSongs,
           skip: 3,
-          take: 12,
-        ),
-        ..._metrolistSongRailSlivers(
-          context: context,
-          title: 'Vídeos de música recomendados',
-          songs: songs,
-          skip: 9,
-          take: 12,
+          take: 14,
         ),
         ..._metrolistSongRailSlivers(
           context: context,
           title: 'Escolha a dedo',
-          songs: songs,
-          skip: 1,
-          take: 12,
+          songs: personalizedSongs.reversed.toList(growable: false),
+          take: 14,
         ),
         SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
       ],
