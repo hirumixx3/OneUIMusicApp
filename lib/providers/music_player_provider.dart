@@ -75,6 +75,12 @@ class EqualizerBandSetting {
   }
 }
 
+/// Top-level so it can run via [compute] on a background isolate — keeps
+/// the (sometimes multi-hundred-KB) base64 decode for embedded local
+/// artwork off the UI isolate so it can't cause a frame hitch while other
+/// artwork loads or scrolling is happening at the same time.
+Uint8List _decodeBase64Artwork(String base64) => base64Decode(base64);
+
 class MusicPlayerProvider extends ChangeNotifier {
   static const MethodChannel _scannerChannel = MethodChannel('fast_audio_scanner');
   static const MethodChannel _equalizerChannel = MethodChannel('com.hirumisu.musicapp/equalizer');
@@ -135,6 +141,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     LibraryTab.favorites: 0,
     LibraryTab.online: 0,
   };
+  final Map<LibraryTab, DateTime> _lastScrollPersistAt = <LibraryTab, DateTime>{};
   final Map<String, Uint8List?> _artworkBytesCache = <String, Uint8List?>{};
   final Map<String, Future<Uint8List?>> _artworkFutureCache = <String, Future<Uint8List?>>{};
   final Map<String, Uri> _notificationArtworkUriCache = <String, Uri>{};
@@ -2293,7 +2300,13 @@ class MusicPlayerProvider extends ChangeNotifier {
             final bytes = builder.takeBytes();
             _artworkBytesCache[track.albumGroupKey] = bytes;
             _artworkBytesCache[track.libraryKey] = bytes;
-            notifyListeners();
+            // Intentionally no notifyListeners() here: every visible
+            // LazyArtwork already awaits this exact Future (shared via
+            // _artworkFutureCache) through its own FutureBuilder, so it
+            // repaints itself the moment this completes. Broadcasting a
+            // global notifyListeners() per artwork load used to force a
+            // full rebuild of the whole screen on every image fetch,
+            // which was a major source of jank while scrolling/loading.
             return bytes;
           }
         } finally {
@@ -2317,10 +2330,10 @@ class MusicPlayerProvider extends ChangeNotifier {
         return null;
       }
 
-      final bytes = base64Decode(base64);
+      final bytes = await compute(_decodeBase64Artwork, base64);
       _artworkBytesCache[track.albumGroupKey] = bytes;
       _artworkBytesCache[track.libraryKey] = bytes;
-      notifyListeners();
+      // See comment above: no global notifyListeners() needed here either.
       return bytes;
     } catch (_) {
       _artworkBytesCache[track.albumGroupKey] = null;
@@ -3639,6 +3652,17 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   void updateScrollOffset(LibraryTab tab, double offset) {
     _scrollOffsets[tab] = offset;
+    // Persisting to disk on every single scroll-position tick (which can
+    // fire dozens of times per second during a fling) floods the
+    // SharedPreferences platform channel and is a common source of
+    // scroll jank/stutter, especially on lower-end phones. Keep the
+    // in-memory value always current, but throttle the actual disk write.
+    final now = DateTime.now();
+    final lastPersist = _lastScrollPersistAt[tab];
+    if (lastPersist != null && now.difference(lastPersist) < const Duration(milliseconds: 400)) {
+      return;
+    }
+    _lastScrollPersistAt[tab] = now;
     _prefs?.setDouble('$_scrollKeyPrefix${tab.name}', offset);
   }
 

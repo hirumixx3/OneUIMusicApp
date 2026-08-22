@@ -467,50 +467,62 @@ class OneUi9Glass extends StatelessWidget {
         tint ?? (strong ? context.oneUiGlassStrong : context.oneUiGlass);
     final surface = _oneUiScaledOpacity(baseSurface, transparencyFactor);
     final effectiveBlur = blur * blurFactor;
-    final glass = ClipRRect(
-      borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: effectiveBlur, sigmaY: effectiveBlur),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: borderRadius,
-            border: Border.all(
-              color: _oneUiScaledOpacity(
-                borderColor ?? context.oneUiOutline,
-                transparencyFactor,
-              ),
-            ),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                _oneUiScaledOpacity(
-                  Colors.white.withOpacity(
-                    clear
-                        ? (context.oneUiDark ? 0.11 : 0.30)
-                        : (context.oneUiDark ? 0.12 : 0.46),
-                  ),
-                  transparencyFactor,
-                ),
-                surface,
-                _oneUiScaledOpacity(
-                  OneUi9.accent.withOpacity(
-                    clear
-                        ? (context.oneUiDark ? 0.025 : 0.018)
-                        : (context.oneUiDark ? 0.035 : 0.025),
-                  ),
-                  transparencyFactor,
-                ),
-              ],
-              stops: const [0, 0.42, 1],
-            ),
+
+    final decorated = DecoratedBox(
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: borderRadius,
+        border: Border.all(
+          color: _oneUiScaledOpacity(
+            borderColor ?? context.oneUiOutline,
+            transparencyFactor,
           ),
-          child: padding == null
-              ? child
-              : Padding(padding: padding!, child: child),
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _oneUiScaledOpacity(
+              Colors.white.withOpacity(
+                clear
+                    ? (context.oneUiDark ? 0.11 : 0.30)
+                    : (context.oneUiDark ? 0.12 : 0.46),
+              ),
+              transparencyFactor,
+            ),
+            surface,
+            _oneUiScaledOpacity(
+              OneUi9.accent.withOpacity(
+                clear
+                    ? (context.oneUiDark ? 0.025 : 0.018)
+                    : (context.oneUiDark ? 0.035 : 0.025),
+              ),
+              transparencyFactor,
+            ),
+          ],
+          stops: const [0, 0.42, 1],
         ),
       ),
+      child: padding == null ? child : Padding(padding: padding!, child: child),
+    );
+
+    // Skip BackdropFilter entirely once blur is fully off: it still forces
+    // a GPU compositing pass to sample the framebuffer even at sigma 0, so
+    // when the master toggle/slider brings blur to zero this avoids that
+    // cost rather than just rendering an invisible blur.
+    final blurred = effectiveBlur > 0
+        ? BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: effectiveBlur, sigmaY: effectiveBlur),
+            child: decorated,
+          )
+        : decorated;
+
+    // RepaintBoundary isolates this frosted surface into its own
+    // compositing layer so unrelated repaints elsewhere in the tree (e.g.
+    // a sibling list item, a timer-driven progress bar) don't force this
+    // blur/gradient to be recomposited every frame.
+    final glass = RepaintBoundary(
+      child: ClipRRect(borderRadius: borderRadius, child: blurred),
     );
 
     return Container(

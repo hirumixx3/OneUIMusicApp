@@ -4591,6 +4591,7 @@ class _UserPlaylistRow extends StatelessWidget {
                       : LazyArtwork(
                           track: coverTrack,
                           borderRadius: BorderRadius.circular(18),
+                          size: 66,
                           fallbackIcon: const Icon(
                             Icons.playlist_play_rounded,
                             color: Colors.white,
@@ -5086,6 +5087,7 @@ class _ArtworkCard extends StatelessWidget {
             track: track,
             borderRadius: radius,
             fit: BoxFit.cover,
+            size: albumMode ? 220 : 160,
             fallbackIcon: const Icon(
               Icons.album_rounded,
               size: 72,

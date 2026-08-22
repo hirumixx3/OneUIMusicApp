@@ -85,6 +85,7 @@ class MusicListTile extends StatelessWidget {
                       child: LazyArtwork(
                         track: track,
                         borderRadius: BorderRadius.circular(19),
+                        size: compact ? 56 : 62,
                         fallbackIcon: const Icon(
                           Icons.music_note_rounded,
                           size: 30,

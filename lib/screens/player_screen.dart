@@ -303,6 +303,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 track: item,
                                 borderRadius: BorderRadius.circular(12),
                                 fit: BoxFit.cover,
+                                size: 42,
                                 fallbackIcon: const Icon(
                                   Icons.music_note_rounded,
                                   size: 18,
@@ -908,6 +909,9 @@ class _CoverArtworkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final artworkUrl = (track.artworkUrl ?? '').trim();
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final coverSize = MediaQuery.of(context).size.width;
+    final cachePixels = (coverSize * dpr).round().clamp(64, 1200);
     return SizedBox.expand(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
@@ -917,11 +921,15 @@ class _CoverArtworkCard extends StatelessWidget {
                 width: double.infinity,
                 height: double.infinity,
                 fit: BoxFit.cover,
+                cacheWidth: cachePixels,
+                cacheHeight: cachePixels,
                 filterQuality: FilterQuality.high,
                 errorBuilder: (_, __, ___) => LazyArtwork(
                   track: track,
                   borderRadius: BorderRadius.circular(28),
                   fit: BoxFit.cover,
+                  large: true,
+                  size: coverSize,
                   fallbackIcon: const Icon(
                     Icons.music_note_rounded,
                     size: 120,
@@ -933,6 +941,8 @@ class _CoverArtworkCard extends StatelessWidget {
                 track: track,
                 borderRadius: BorderRadius.circular(28),
                 fit: BoxFit.cover,
+                large: true,
+                size: coverSize,
                 fallbackIcon: const Icon(
                   Icons.music_note_rounded,
                   size: 120,

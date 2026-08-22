@@ -121,6 +121,7 @@ class _MetrolistFloatingPlayer extends StatelessWidget {
                                   child: LazyArtwork(
                                     track: track,
                                     borderRadius: BorderRadius.circular(19),
+                                    size: 58,
                                     fallbackIcon: const Icon(
                                       Icons.music_note_rounded,
                                       color: Colors.white70,

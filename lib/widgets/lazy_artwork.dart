@@ -15,6 +15,7 @@ class LazyArtwork extends StatelessWidget {
     required this.fallbackIcon,
     this.fit = BoxFit.cover,
     this.large = false,
+    this.size,
   });
 
   final AudioTrack track;
@@ -23,24 +24,34 @@ class LazyArtwork extends StatelessWidget {
   final BoxFit fit;
   final bool large;
 
+  /// Logical-pixel hint for the largest side this artwork renders at.
+  /// Used to downsample the decoded image so we never decode a
+  /// multi-megapixel embedded/network cover just to paint a small
+  /// thumbnail. Defaults to a sensible thumbnail size, or a larger
+  /// size when [large] is true.
+  final double? size;
+
   @override
   Widget build(BuildContext context) {
     final provider = context.read<MusicPlayerProvider>();
     final cached = provider.cachedArtworkFor(track);
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final logicalSize = size ?? (large ? 480 : 160);
+    final cachePixels = (logicalSize * dpr).round().clamp(64, 960);
 
     return ClipRRect(
       borderRadius: borderRadius,
       child: cached != null
-          ? _buildImage(cached)
+          ? _buildImage(cached, cachePixels)
           : FutureBuilder<Uint8List?>(
               future: provider.ensureArtwork(track),
               builder: (context, snapshot) {
                 final bytes = snapshot.data ?? provider.cachedArtworkFor(track);
                 if (bytes != null) {
-                  return _buildImage(bytes);
+                  return _buildImage(bytes, cachePixels);
                 }
                 if ((track.artworkUrl ?? '').trim().isNotEmpty) {
-                  return _networkImage(track.artworkUrl!.trim());
+                  return _networkImage(track.artworkUrl!.trim(), cachePixels);
                 }
                 return _fallback();
               },
@@ -48,25 +59,29 @@ class LazyArtwork extends StatelessWidget {
     );
   }
 
-  Widget _buildImage(Uint8List bytes) {
+  Widget _buildImage(Uint8List bytes, int cachePixels) {
     return Image.memory(
       bytes,
       width: double.infinity,
       height: double.infinity,
       fit: fit,
-      filterQuality: FilterQuality.high,
+      cacheWidth: cachePixels,
+      cacheHeight: cachePixels,
+      filterQuality: large ? FilterQuality.high : FilterQuality.medium,
       gaplessPlayback: true,
       errorBuilder: (_, __, ___) => _fallback(),
     );
   }
 
-  Widget _networkImage(String url) {
+  Widget _networkImage(String url, int cachePixels) {
     return Image.network(
       url,
       width: double.infinity,
       height: double.infinity,
       fit: fit,
-      filterQuality: FilterQuality.high,
+      cacheWidth: cachePixels,
+      cacheHeight: cachePixels,
+      filterQuality: large ? FilterQuality.high : FilterQuality.medium,
       gaplessPlayback: true,
       errorBuilder: (_, __, ___) => _fallback(),
       loadingBuilder: (context, child, progress) {
