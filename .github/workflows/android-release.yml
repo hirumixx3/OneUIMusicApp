@@ -82,6 +82,12 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Upgrade Built-in Kotlin compatible plugins
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub upgrade shared_preferences_android
+
       - name: Build AAB release
         run: flutter build appbundle --release
 
