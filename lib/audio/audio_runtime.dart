@@ -39,7 +39,7 @@ class AudioRuntime {
           androidNotificationChannelId: 'com.hirumisu.musicapp.channel.audio',
           androidNotificationChannelName: 'Reprodução de música',
           androidNotificationOngoing: true,
-          androidStopForegroundOnPause: true,
+          androidStopForegroundOnPause: false,
           preloadArtwork: true,
         ),
       );

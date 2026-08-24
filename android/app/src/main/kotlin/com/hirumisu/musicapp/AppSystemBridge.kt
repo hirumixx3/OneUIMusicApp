@@ -32,7 +32,7 @@ object AppSystemBridge {
                     playbackWakeLock = it
                 }
             if (!wakeLock.isHeld) {
-                wakeLock.acquire(10 * 60 * 60 * 1000L)
+                wakeLock.acquire()
             }
         } else {
             playbackWakeLock?.let {

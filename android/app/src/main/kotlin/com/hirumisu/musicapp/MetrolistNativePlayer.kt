@@ -669,6 +669,26 @@ object MetrolistNativePlayer {
         )
     }
 
+    /**
+     * True while playback is expected to continue, including buffering and short
+     * READY transitions where ExoPlayer may temporarily report isPlaying=false.
+     * Keeping the mediaPlayback FGS alive during those transitions prevents the
+     * process priority from dropping while a song is still logically active.
+     */
+    internal fun shouldKeepForegroundService(): Boolean = onMainSync {
+        val p = player ?: return@onMainSync false
+        val state = p.playbackState
+        val hasPlayableItem = p.currentMediaItem != null && p.mediaItemCount > 0
+        val canContinueAfterEnded = state == Player.STATE_ENDED && (
+            p.repeatMode != Player.REPEAT_MODE_OFF || p.nextMediaItemIndex != C.INDEX_UNSET
+        )
+        hasPlayableItem && (
+            p.isPlaying ||
+                (p.playWhenReady && state != Player.STATE_IDLE && state != Player.STATE_ENDED) ||
+                (p.playWhenReady && canContinueAfterEnded)
+        )
+    }
+
     internal fun promoteToForeground(service: Service) {
         ensureInitialized(service.applicationContext)
         val notification = buildNotification(service.applicationContext) ?: lastNotification ?: return
@@ -959,8 +979,8 @@ object MetrolistNativePlayer {
         val p = player ?: return
         val notification = buildNotification(context) ?: return
         lastNotification = notification
-        val playing = p.isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING)
-        if (playing) {
+        val keepForeground = shouldKeepForegroundService()
+        if (keepForeground) {
             requestForegroundService(context.applicationContext)
         } else if (foregroundServiceActive) {
             requestStopForegroundService(context.applicationContext)
