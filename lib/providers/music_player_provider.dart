@@ -3384,6 +3384,22 @@ class MusicPlayerProvider extends ChangeNotifier {
     return future;
   }
 
+  /// Resolves a playable track into an artist page target. Remote tracks from
+  /// Innertube normally carry a browse id; fallback/search tracks receive a
+  /// synthetic id so tapping the artist is still useful.
+  OnlineArtist onlineArtistForTrack(AudioTrack track) {
+    final name = track.artist.trim().isEmpty ? 'Artista' : track.artist.trim();
+    final artwork = track.artworkUrl ?? '';
+    final id = (track.artistId ?? '').trim();
+    return OnlineArtist(
+      browseId: id.isNotEmpty
+          ? id
+          : "$_syntheticArtistPrefix${_packSynthetic(<String>[name, artwork])}",
+      name: name,
+      thumbnailUrl: artwork,
+    );
+  }
+
   Future<OnlineArtistPage> loadOnlineArtist(String browseId) {
     final key = browseId.trim();
     if (key.startsWith(_syntheticArtistPrefix)) {

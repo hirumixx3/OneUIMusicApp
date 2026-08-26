@@ -3227,7 +3227,7 @@ class _OnlineTabState extends State<_OnlineTab>
           context: context,
           title: provider.onlineFeedAuthenticated
               ? 'Playlists da sua conta e para você'
-              : 'Playlists em alta',
+              : 'Playlists da comunidade em alta',
           playlists: provider.onlineDisplayPlaylists,
           take: 14,
         ),
@@ -3277,6 +3277,54 @@ class _OnlineTabState extends State<_OnlineTab>
           title: 'Escolha a dedo',
           songs: personalizedSongs.reversed.toList(growable: false),
           take: 14,
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 26)),
+        const SliverToBoxAdapter(
+          child: _YoutubeSectionHeader(title: 'Humor e Gêneros'),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisExtent: 64,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                const genres = <String>[
+                  'Clima alegre', 'Foco', 'Em trânsito', 'Games',
+                  'Energia', 'Músicas para relaxar', 'Pop', 'K-pop',
+                ];
+                final genre = genres[index];
+                return OneUi9Glass(
+                  radius: 18,
+                  blur: 14,
+                  showShadow: false,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () => provider.searchOnline(
+                      forceQuery: genre,
+                      refresh: true,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          genre,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+              childCount: 8,
+            ),
+          ),
         ),
         SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
       ],

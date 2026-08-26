@@ -308,17 +308,19 @@ extension OneUi9Context on BuildContext {
 
   /// 0.0 disables blur entirely, 1.0 applies the full designed blur.
   double get oneUiBlurFactor {
-    final provider = Provider.of<MusicPlayerProvider>(this, listen: true);
-    if (!provider.glassEffectsEnabled) return 0.0;
-    return provider.glassBlurAmount.clamp(0.0, 1.0);
+    final enabled = select<MusicPlayerProvider, bool>((p) => p.glassEffectsEnabled);
+    if (!enabled) return 0.0;
+    final amount = select<MusicPlayerProvider, double>((p) => p.glassBlurAmount);
+    return amount.clamp(0.0, 1.0);
   }
 
   /// 0.0 renders fully solid/opaque surfaces, 1.0 applies the full designed
   /// translucency.
   double get oneUiTransparencyFactor {
-    final provider = Provider.of<MusicPlayerProvider>(this, listen: true);
-    if (!provider.glassEffectsEnabled) return 0.0;
-    return provider.glassTransparencyAmount.clamp(0.0, 1.0);
+    final enabled = select<MusicPlayerProvider, bool>((p) => p.glassEffectsEnabled);
+    if (!enabled) return 0.0;
+    final amount = select<MusicPlayerProvider, double>((p) => p.glassTransparencyAmount);
+    return amount.clamp(0.0, 1.0);
   }
 }
 
@@ -412,20 +414,25 @@ class _LiquidOrb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 38, sigmaY: 38),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              color.withOpacity(context.oneUiDark ? 0.26 : 0.40),
-              color.withOpacity(0),
-            ],
-          ),
+    final orb = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            color.withOpacity(context.oneUiDark ? 0.26 : 0.40),
+            color.withOpacity(0),
+          ],
         ),
+      ),
+    );
+    final sigma = 38.0 * context.oneUiBlurFactor;
+    if (sigma <= 0) return RepaintBoundary(child: orb);
+    return RepaintBoundary(
+      child: ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: orb,
       ),
     );
   }
@@ -478,7 +485,9 @@ class OneUi9Glass extends StatelessWidget {
             transparencyFactor,
           ),
         ),
-        gradient: LinearGradient(
+        gradient: effectiveBlur <= 0
+            ? null
+            : LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [

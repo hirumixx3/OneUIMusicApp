@@ -7,6 +7,7 @@ import '../l10n/app_strings.dart';
 import '../models/audio_track.dart';
 import '../providers/music_player_provider.dart' as music_provider;
 import '../screens/equalizer_screen.dart';
+import '../screens/player_artist_screen.dart';
 import '../ui/one_ui_9.dart';
 import '../widgets/lazy_artwork.dart';
 
@@ -645,13 +646,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ?.copyWith(fontWeight: FontWeight.w900),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    '${track.artist} • ${track.album}',
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(color: secondary, height: 1.35),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          final artist = provider.onlineArtistForTrack(track);
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PlayerArtistScreen(artist: artist),
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                          child: Text(
+                            track.artist,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w800,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Text(
+                        ' • ${track.album}',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(color: secondary, height: 1.35),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 18),
                   if (waitingRemoteStart)
