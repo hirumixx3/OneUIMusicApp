@@ -640,7 +640,10 @@ object MetrolistNativePlayer {
         val position = p?.currentPosition?.takeIf { it >= 0L } ?: 0L
         val buffered = p?.bufferedPosition?.takeIf { it >= 0L } ?: 0L
         val playbackState = p?.playbackState ?: Player.STATE_IDLE
-        val audioSessionId = attachEqualizerToPlayerSession(p)
+        // Polling happens twice a second. Do not re-attach/snapshot the full
+        // Equalizer on every clock tick; player callbacks already attach it
+        // whenever the session/media state changes.
+        val audioSessionId = runCatching { p?.audioSessionId ?: 0 }.getOrDefault(0)
         mapOf(
             "playing" to (p?.isPlaying == true),
             "playWhenReady" to (p?.playWhenReady == true),
@@ -651,7 +654,6 @@ object MetrolistNativePlayer {
             "queueIndex" to (p?.currentMediaItemIndex ?: -1),
             "queueSize" to (p?.mediaItemCount ?: 0),
             "audioSessionId" to audioSessionId,
-            "equalizer" to AppEqualizer.getState(),
             "shuffle" to (p?.shuffleModeEnabled == true),
             "repeatMode" to when (p?.repeatMode ?: Player.REPEAT_MODE_OFF) {
                 Player.REPEAT_MODE_ONE -> "track"

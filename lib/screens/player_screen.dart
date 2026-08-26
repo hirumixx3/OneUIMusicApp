@@ -416,6 +416,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _ensureLyricsLoaded(provider, track);
     final lyricsText = provider.lyricsFor(track);
+    final lyricsSource = provider.lyricsSourceFor(track);
     final hasLyrics = lyricsText.isNotEmpty;
     final loadingLyrics = provider.isLoadingLyricsFor(track);
     final showLyrics = _showLyrics && hasLyrics;
@@ -583,6 +584,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                         padding: const EdgeInsets.all(12),
                                         child: _LyricsArtworkCard(
                                           lyrics: lyricsText,
+                                          source: lyricsSource,
                                           isDark: isDark,
                                         ),
                                       )
@@ -984,10 +986,12 @@ class _LyricsArtworkCard extends StatelessWidget {
   const _LyricsArtworkCard({
     super.key,
     required this.lyrics,
+    required this.source,
     required this.isDark,
   });
 
   final String lyrics;
+  final String source;
   final bool isDark;
 
   @override
@@ -1009,7 +1013,7 @@ class _LyricsArtworkCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Letras de LrcLib',
+            source.trim().isEmpty ? 'Letras' : 'Letras de ${source.trim()}',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
               color: isDark ? Colors.white70 : Colors.black54,

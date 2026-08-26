@@ -1,6 +1,7 @@
 package com.hirumisu.musicapp
 
 import android.content.Context
+import android.util.Base64
 import com.metrolist.innertube.YouTube
 import com.metrolist.innertube.models.AlbumItem
 import com.metrolist.innertube.models.ArtistItem
@@ -10,6 +11,7 @@ import com.metrolist.innertube.models.PodcastItem
 import com.metrolist.innertube.models.SongItem
 import com.metrolist.innertube.models.YTItem
 import com.metrolist.innertube.models.YouTubeClient
+import com.metrolist.innertube.pages.HomePage
 import com.metrolist.innertube.models.filterVideoSongs
 import com.metrolist.music.utils.cipher.CipherDeobfuscator
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,90 @@ object MetrolistOnlineBridge {
             .readTimeout(6, TimeUnit.SECONDS)
             .writeTimeout(6, TimeUnit.SECONDS)
             .build()
+    }
+
+    private suspend fun collectHomeSections(
+        firstPage: HomePage?,
+        maxPages: Int = 4,
+        maxSections: Int = 32,
+    ): List<HomePage.Section> {
+        if (firstPage == null) return emptyList()
+        val sections = firstPage.sections.toMutableList()
+        var continuation = firstPage.continuation
+        val seen = mutableSetOf<String>()
+        var page = 1
+        while (!continuation.isNullOrBlank() && page < maxPages && sections.size < maxSections) {
+            val token = continuation ?: break
+            if (!seen.add(token)) break
+            val next = withTimeoutOrNull(2_800L) { YouTube.home(continuation = token).getOrNull() } ?: break
+            sections += next.sections
+            continuation = next.continuation
+            page++
+        }
+        return sections.take(maxSections)
+    }
+
+    private suspend fun collectLibraryItems(
+        browseId: String,
+        maxItems: Int = 500,
+        maxPages: Int = 8,
+    ): List<YTItem> {
+        val first = withTimeoutOrNull(5_000L) { YouTube.library(browseId).getOrNull() }
+            ?: return emptyList()
+        val items = first.items.toMutableList()
+        var continuation = first.continuation
+        val seen = mutableSetOf<String>()
+        var page = 1
+        while (!continuation.isNullOrBlank() && page < maxPages && items.size < maxItems) {
+            val token = continuation ?: break
+            if (!seen.add(token)) break
+            val next = withTimeoutOrNull(4_000L) { YouTube.libraryContinuation(token).getOrNull() } ?: break
+            items += next.items
+            continuation = next.continuation
+            page++
+        }
+        return items.dedupeItems().take(maxItems)
+    }
+
+    private suspend fun collectPlaylistSongs(
+        playlistId: String,
+        maxItems: Int = 500,
+        maxPages: Int = 8,
+    ): List<SongItem> {
+        val first = withTimeoutOrNull(5_500L) { YouTube.playlist(playlistId).getOrNull() }
+            ?: return emptyList()
+        val songs = first.songs.toMutableList()
+        var continuation = first.songsContinuation ?: first.continuation
+        val seen = mutableSetOf<String>()
+        var page = 1
+        while (!continuation.isNullOrBlank() && page < maxPages && songs.size < maxItems) {
+            val token = continuation ?: break
+            if (!seen.add(token)) break
+            val next = withTimeoutOrNull(4_000L) { YouTube.playlistContinuation(token).getOrNull() } ?: break
+            songs += next.songs
+            continuation = next.continuation
+            page++
+        }
+        return songs.dedupeItems().take(maxItems)
+    }
+
+    private fun homeSectionMap(section: HomePage.Section): Map<String, Any?> {
+        val items = section.items.dedupeItems()
+        return mapOf(
+            "title" to section.title,
+            "subtitle" to section.label,
+            "thumbnailUrl" to highQualityThumbnail(section.thumbnail),
+            "songs" to items.filterIsInstance<SongItem>().dedupeItems().take(80).map { songMap(it) },
+            "albums" to items.filterIsInstance<AlbumItem>().dedupeItems().take(60).map { albumMap(it) },
+            "artists" to items.filterIsInstance<ArtistItem>().dedupeItems().take(60).map { artistMap(it) },
+            "playlists" to items.mapNotNull { item ->
+                when (item) {
+                    is PlaylistItem -> item
+                    is PodcastItem -> item.asPlaylistItem()
+                    else -> null
+                }
+            }.dedupeItems().take(60).map { playlistMap(it) },
+        )
     }
 
     private fun ensureInitialized(context: Context) {
@@ -134,9 +220,7 @@ object MetrolistOnlineBridge {
             }
             val likedDeferred = async {
                 if (!authenticated) return@async emptyList<SongItem>()
-                withTimeoutOrNull(6_000L) {
-                    YouTube.playlist("LM").getOrNull()?.songs
-                }.orEmpty()
+                collectPlaylistSongs("LM", maxItems = 500, maxPages = 8)
             }
             val libraryDeferred = async {
                 if (!authenticated) return@async emptyList<YTItem>()
@@ -149,14 +233,7 @@ object MetrolistOnlineBridge {
                     "FEmusic_library_corpus_track_playlists",
                 )
                 browseIds.map { browseId ->
-                    async {
-                        withTimeoutOrNull(5_500L) {
-                            YouTube.browse(browseId, null).getOrNull()
-                                ?.items
-                                .orEmpty()
-                                .flatMap { it.items }
-                        }.orEmpty()
-                    }
+                    async { collectLibraryItems(browseId, maxItems = 500, maxPages = 8) }
                 }.awaitAll().flatten().dedupeItems()
             }
             val releasesDeferred = async {
@@ -178,7 +255,7 @@ object MetrolistOnlineBridge {
             }
 
             val homePage = homeDeferred.await()
-            val homeSections = homePage?.sections.orEmpty()
+            val homeSections = collectHomeSections(homePage, maxPages = 4, maxSections = 32)
             val homeItems = homeSections.flatMap { it.items }.dedupeItems()
             val historySongs = historyDeferred.await().dedupeItems()
             val likedSongs = likedDeferred.await().dedupeItems()
@@ -231,21 +308,22 @@ object MetrolistOnlineBridge {
                     likedSongs.take(30) +
                     libraryItems.take(40)
                 ).dedupeItems()
-            val libraryResult = searchResultMap(libraryItems)
+            val libraryResult = searchResultMap(libraryItems, songLimit = 500, itemLimit = 240)
 
             mapOf(
                 "authenticated" to authenticated,
                 "catalog" to searchResultMap(catalogItems),
                 "quickPicks" to quickPickSongs.take(40).map { songMap(it) },
                 "listenAgain" to listenAgain.take(80).map { songMap(it) },
-                "accountHistory" to historySongs.take(120).map { songMap(it) },
-                "likedSongs" to likedSongs.take(120).map { songMap(it) },
+                "accountHistory" to historySongs.take(400).map { songMap(it) },
+                "likedSongs" to likedSongs.take(500).map { songMap(it) },
                 "librarySongs" to (libraryResult["songs"] ?: emptyList<Map<String, Any?>>()),
                 "newReleaseSongs" to newReleaseSongs.take(60).map { songMap(it) },
                 "newReleaseAlbums" to releaseAlbums.take(60).map { albumMap(it) },
                 "libraryAlbums" to (libraryResult["albums"] ?: emptyList<Map<String, Any?>>()),
                 "libraryArtists" to (libraryResult["artists"] ?: emptyList<Map<String, Any?>>()),
                 "libraryPlaylists" to (libraryResult["playlists"] ?: emptyList<Map<String, Any?>>()),
+                "sections" to homeSections.map { homeSectionMap(it) },
             )
         }
     }
@@ -902,18 +980,30 @@ object MetrolistOnlineBridge {
     }
 
 
-    fun lyrics(context: Context, title: String, artist: String, album: String, durationMs: Int): String {
+    fun lyrics(context: Context, title: String, artist: String, album: String, durationMs: Int): String =
+        lyricsV2(context, title, artist, album, durationMs)["lyrics"]?.toString().orEmpty()
+
+    fun lyricsV2(
+        context: Context,
+        title: String,
+        artist: String,
+        album: String,
+        durationMs: Int,
+    ): Map<String, Any?> {
         ensureInitialized(context)
         val cleanTitle = title.cleanLyricQuery()
         val cleanArtist = artist.cleanLyricQuery()
         val cleanAlbum = album.cleanLyricQuery()
-        if (cleanTitle.isBlank() || cleanArtist.isBlank()) return ""
+        if (cleanTitle.isBlank() || cleanArtist.isBlank()) {
+            return mapOf("lyrics" to "", "source" to "")
+        }
 
         fun get(url: String): String? = runCatching {
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "Metrolist/Flutter Music App")
-                .header("Accept", "application/json")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125 Mobile Safari/537.36")
+                .header("Accept", "application/json,text/plain,*/*")
+                .header("Referer", "https://www.kugou.com/")
                 .get()
                 .build()
             quickHttpClient.newCall(request).execute().use { response ->
@@ -925,37 +1015,113 @@ object MetrolistOnlineBridge {
         val exactUrl = buildString {
             append("https://lrclib.net/api/get?track_name=").append(enc(cleanTitle))
             append("&artist_name=").append(enc(cleanArtist))
-            if (cleanAlbum.isNotBlank() && cleanAlbum != "YouTube Music") append("&album_name=").append(enc(cleanAlbum))
+            if (cleanAlbum.isNotBlank() && cleanAlbum != "YouTube Music") {
+                append("&album_name=").append(enc(cleanAlbum))
+            }
             durationSeconds?.let { append("&duration=").append(it) }
         }
         get(exactUrl)?.let { body ->
-            runCatching { parseLyricsObject(JSONObject(body)) }.getOrNull()?.let { return it }
+            runCatching { parseLyricsObject(JSONObject(body)) }.getOrNull()?.let { lyrics ->
+                return mapOf("lyrics" to lyrics, "source" to "LRCLIB")
+            }
         }
 
         val searchUrl = "https://lrclib.net/api/search?q=${enc(listOf(cleanTitle, cleanArtist).joinToString(" "))}"
         get(searchUrl)?.let { body ->
-            val array = runCatching { JSONArray(body) }.getOrNull() ?: return@let
+            val array = runCatching { JSONArray(body) }.getOrNull()
+            if (array != null) {
+                var best: JSONObject? = null
+                var bestScore = Int.MIN_VALUE
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val trackName = item.optString("trackName", "").lowercase()
+                    val artistName = item.optString("artistName", "").lowercase()
+                    var score = 0
+                    if (trackName == cleanTitle.lowercase()) score += 100
+                    else if (trackName.contains(cleanTitle.lowercase())) score += 40
+                    if (artistName.contains(cleanArtist.lowercase())) score += 60
+                    durationSeconds?.let { d ->
+                        val remoteDuration = item.optInt("duration", 0)
+                        if (remoteDuration > 0) score -= kotlin.math.abs(remoteDuration - d)
+                    }
+                    if (score > bestScore) {
+                        bestScore = score
+                        best = item
+                    }
+                }
+                best?.let { item ->
+                    parseLyricsObject(item)?.let { lyrics ->
+                        return mapOf("lyrics" to lyrics, "source" to "LRCLIB")
+                    }
+                }
+            }
+        }
+
+        // KuGou fallback. Search returns lyric id/accesskey; download returns
+        // Base64 encoded LRC. LRC is preferred so the existing synchronized
+        // lyric UI can keep following the playback position.
+        val query = listOf(cleanArtist, cleanTitle).filter { it.isNotBlank() }.joinToString(" - ")
+        val searchCandidates = buildList {
+            add(
+                buildString {
+                    append("https://lyrics.kugou.com/search?ver=1&man=yes&client=pc")
+                    append("&keyword=").append(enc(query))
+                    if (durationMs > 0) append("&duration=").append(durationMs)
+                },
+            )
+            add("https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=${enc(query)}")
+        }
+        for (kugouSearchUrl in searchCandidates.distinct()) {
+            val body = get(kugouSearchUrl) ?: continue
+            val root = runCatching { JSONObject(body) }.getOrNull() ?: continue
+            val candidates = root.optJSONArray("candidates") ?: continue
             var best: JSONObject? = null
             var bestScore = Int.MIN_VALUE
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                val trackName = item.optString("trackName", "").lowercase()
-                val artistName = item.optString("artistName", "").lowercase()
+            for (i in 0 until candidates.length()) {
+                val candidate = candidates.optJSONObject(i) ?: continue
+                val id = candidate.optString("id", "").trim()
+                val accessKey = candidate.optString("accesskey", "").trim()
+                if (id.isEmpty() || accessKey.isEmpty()) continue
+                val descriptor = listOf(
+                    candidate.optString("soundname", ""),
+                    candidate.optString("song", ""),
+                    candidate.optString("songname", ""),
+                    candidate.optString("singer", ""),
+                    candidate.optString("originame", ""),
+                ).joinToString(" ").lowercase()
                 var score = 0
-                if (trackName == cleanTitle.lowercase()) score += 100 else if (trackName.contains(cleanTitle.lowercase())) score += 40
-                if (artistName.contains(cleanArtist.lowercase())) score += 60
-                durationSeconds?.let { d ->
-                    val remoteDuration = item.optInt("duration", 0)
-                    if (remoteDuration > 0) score -= kotlin.math.abs(remoteDuration - d)
+                if (descriptor.contains(cleanTitle.lowercase())) score += 80
+                if (descriptor.contains(cleanArtist.lowercase())) score += 60
+                val remoteDuration = candidate.optLong("duration", 0L)
+                if (remoteDuration > 0 && durationMs > 0) {
+                    val remoteMs = if (remoteDuration < 10_000L) remoteDuration * 1000L else remoteDuration
+                    score -= (kotlin.math.abs(remoteMs - durationMs.toLong()) / 1000L).toInt().coerceAtMost(120)
                 }
                 if (score > bestScore) {
                     bestScore = score
-                    best = item
+                    best = candidate
                 }
             }
-            best?.let { parseLyricsObject(it)?.let { lyrics -> return lyrics } }
+            val candidate = best ?: continue
+            val id = candidate.optString("id", "").trim()
+            val accessKey = candidate.optString("accesskey", "").trim()
+            val downloadUrl = buildString {
+                append("https://lyrics.kugou.com/download?ver=1&client=pc&id=").append(enc(id))
+                append("&accesskey=").append(enc(accessKey))
+                append("&fmt=lrc&charset=utf8")
+            }
+            val downloadBody = get(downloadUrl) ?: continue
+            val content = runCatching { JSONObject(downloadBody).optString("content", "") }.getOrDefault("")
+            if (content.isBlank()) continue
+            val decoded = runCatching {
+                String(Base64.decode(content, Base64.DEFAULT), Charsets.UTF_8).trim()
+            }.getOrNull().orEmpty()
+            if (decoded.isNotBlank()) {
+                return mapOf("lyrics" to decoded, "source" to "KuGou")
+            }
         }
-        return ""
+
+        return mapOf("lyrics" to "", "source" to "")
     }
 
     private fun parseLyricsObject(item: JSONObject): String? {
@@ -1082,17 +1248,21 @@ object MetrolistOnlineBridge {
         )
     }
 
-    private fun searchResultMap(items: List<YTItem>): Map<String, Any?> {
-        val songs = items.filterIsInstance<SongItem>().filterVideoSongs(false).dedupeItems().take(120).map { songMap(it) }
-        val albums = items.filterIsInstance<AlbumItem>().dedupeItems().take(60).map { albumMap(it) }
-        val artists = items.filterIsInstance<ArtistItem>().dedupeItems().take(60).map { artistMap(it) }
+    private fun searchResultMap(
+        items: List<YTItem>,
+        songLimit: Int = 120,
+        itemLimit: Int = 60,
+    ): Map<String, Any?> {
+        val songs = items.filterIsInstance<SongItem>().filterVideoSongs(false).dedupeItems().take(songLimit).map { songMap(it) }
+        val albums = items.filterIsInstance<AlbumItem>().dedupeItems().take(itemLimit).map { albumMap(it) }
+        val artists = items.filterIsInstance<ArtistItem>().dedupeItems().take(itemLimit).map { artistMap(it) }
         val playlists = items.mapNotNull {
             when (it) {
                 is PlaylistItem -> it
                 is PodcastItem -> it.asPlaylistItem()
                 else -> null
             }
-        }.dedupeItems().take(60).map { playlistMap(it) }
+        }.dedupeItems().take(itemLimit).map { playlistMap(it) }
         return mapOf(
             "songs" to songs,
             "albums" to albums,

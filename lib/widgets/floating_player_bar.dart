@@ -23,22 +23,8 @@ class FloatingPlayerBar extends StatelessWidget {
     final track = provider.currentTrack;
     if (track == null) return const SizedBox.shrink();
 
-    final duration = provider.playbackDuration;
-    final position = provider.playbackPosition;
-    final totalMs = duration.inMilliseconds;
-    final progress = totalMs <= 0
-        ? 0.0
-        : (position.inMilliseconds / totalMs).clamp(0.0, 1.0).toDouble();
-    final bufferedProgress = totalMs <= 0
-        ? progress
-        : (provider.playbackBufferedPosition.inMilliseconds / totalMs)
-              .clamp(progress, 1.0)
-              .toDouble();
-
     return _MetrolistFloatingPlayer(
       track: track,
-      progress: progress,
-      bufferedProgress: bufferedProgress,
       provider: provider,
       embedded: embedded,
     );
@@ -48,15 +34,11 @@ class FloatingPlayerBar extends StatelessWidget {
 class _MetrolistFloatingPlayer extends StatelessWidget {
   const _MetrolistFloatingPlayer({
     required this.track,
-    required this.progress,
-    required this.bufferedProgress,
     required this.provider,
     required this.embedded,
   });
 
   final AudioTrack track;
-  final double progress;
-  final double bufferedProgress;
   final MusicPlayerProvider provider;
   final bool embedded;
 
@@ -202,24 +184,7 @@ class _MetrolistFloatingPlayer extends StatelessWidget {
               left: 70,
               right: 142,
               bottom: 6,
-              child: OneUi9FloatingProgressBar(
-                value: progress,
-                bufferedValue: bufferedProgress,
-                onChanged: (fraction) {
-                  final duration = provider.playbackDuration;
-                  if (duration.inMilliseconds <= 0) return;
-                  provider.seek(
-                    Duration(
-                      milliseconds: (duration.inMilliseconds * fraction)
-                          .round(),
-                    ),
-                  );
-                },
-                height: 9,
-                trackHeight: 4,
-                showThumb: false,
-                showShadow: true,
-              ),
+              child: _MiniPlayerProgress(provider: provider),
             ),
           ],
         ),
@@ -231,6 +196,64 @@ class _MetrolistFloatingPlayer extends StatelessWidget {
       top: false,
       minimum: const EdgeInsets.only(bottom: 7),
       child: bar,
+    );
+  }
+}
+
+
+class _MiniPlayerProgress extends StatelessWidget {
+  const _MiniPlayerProgress({required this.provider});
+
+  final MusicPlayerProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    // Playback position changes several times per second. Keep that hot stream
+    // inside this tiny subtree so it repaints only the progress indicator, not
+    // the full Liquid Glass mini player and not the Online/Home sliver tree.
+    return StreamBuilder<Duration?>(
+      stream: provider.playbackDurationStream,
+      initialData: provider.playbackDuration,
+      builder: (context, durationSnapshot) {
+        return StreamBuilder<Duration>(
+          stream: provider.playbackPositionStream,
+          initialData: provider.playbackPosition,
+          builder: (context, positionSnapshot) {
+            final duration =
+                durationSnapshot.data ?? provider.playbackDuration;
+            final position =
+                positionSnapshot.data ?? provider.playbackPosition;
+            final totalMs = duration.inMilliseconds;
+            final progress = totalMs <= 0
+                ? 0.0
+                : (position.inMilliseconds / totalMs)
+                    .clamp(0.0, 1.0)
+                    .toDouble();
+            final bufferedProgress = totalMs <= 0
+                ? progress
+                : (provider.playbackBufferedPosition.inMilliseconds / totalMs)
+                    .clamp(progress, 1.0)
+                    .toDouble();
+
+            return OneUi9FloatingProgressBar(
+              value: progress,
+              bufferedValue: bufferedProgress,
+              onChanged: (fraction) {
+                if (duration.inMilliseconds <= 0) return;
+                provider.seek(
+                  Duration(
+                    milliseconds: (duration.inMilliseconds * fraction).round(),
+                  ),
+                );
+              },
+              height: 9,
+              trackHeight: 4,
+              showThumb: false,
+              showShadow: true,
+            );
+          },
+        );
+      },
     );
   }
 }

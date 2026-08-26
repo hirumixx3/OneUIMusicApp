@@ -274,6 +274,15 @@ class MainActivity : AudioServiceActivity() {
                             MetrolistOnlineBridge.lyrics(applicationContext, title, artist, album, durationMs)
                         }
                     }
+                    "lyricsV2" -> {
+                        val title      = call.argument<String>("title")   ?: ""
+                        val artist     = call.argument<String>("artist")  ?: ""
+                        val album      = call.argument<String>("album")   ?: ""
+                        val durationMs = call.argument<Int>("durationMs") ?: 0
+                        runAsync(result, "METROLIST_LYRICS_ERROR") {
+                            MetrolistOnlineBridge.lyricsV2(applicationContext, title, artist, album, durationMs)
+                        }
+                    }
 
                     // ── account / login ────────────────────────────────────────
                     "loginWithGoogle" -> {

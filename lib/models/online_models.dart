@@ -106,6 +106,30 @@ class OnlineSearchResult {
   bool get isEmpty => songs.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty;
 }
 
+
+class OnlineHomeSection {
+  const OnlineHomeSection({
+    required this.title,
+    this.subtitle,
+    this.thumbnailUrl,
+    this.songs = const <AudioTrack>[],
+    this.albums = const <OnlineAlbum>[],
+    this.artists = const <OnlineArtist>[],
+    this.playlists = const <OnlinePlaylist>[],
+  });
+
+  final String title;
+  final String? subtitle;
+  final String? thumbnailUrl;
+  final List<AudioTrack> songs;
+  final List<OnlineAlbum> albums;
+  final List<OnlineArtist> artists;
+  final List<OnlinePlaylist> playlists;
+
+  bool get isEmpty =>
+      songs.isEmpty && albums.isEmpty && artists.isEmpty && playlists.isEmpty;
+}
+
 class OnlineHomeFeed {
   const OnlineHomeFeed({
     required this.catalog,
@@ -119,6 +143,7 @@ class OnlineHomeFeed {
     required this.libraryAlbums,
     required this.libraryArtists,
     required this.libraryPlaylists,
+    required this.sections,
     required this.authenticated,
   });
 
@@ -133,5 +158,6 @@ class OnlineHomeFeed {
   final List<OnlineAlbum> libraryAlbums;
   final List<OnlineArtist> libraryArtists;
   final List<OnlinePlaylist> libraryPlaylists;
+  final List<OnlineHomeSection> sections;
   final bool authenticated;
 }

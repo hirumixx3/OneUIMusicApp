@@ -148,6 +148,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   final Map<String, Uri> _notificationArtworkUriCache = <String, Uri>{};
   final Map<String, String> _resolvedPlayablePathCache = <String, String>{};
   final Map<String, String> _lyricsCache = <String, String>{};
+  final Map<String, String> _lyricsSourceCache = <String, String>{};
   final Map<String, Future<String>> _lyricsFutureCache = <String, Future<String>>{};
   final Map<String, DateTime> _lastAffinityPlayRecord = <String, DateTime>{};
 
@@ -173,6 +174,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   List<OnlineAlbum> _onlineAccountAlbums = <OnlineAlbum>[];
   List<OnlineArtist> _onlineAccountArtists = <OnlineArtist>[];
   List<OnlinePlaylist> _onlineAccountPlaylists = <OnlinePlaylist>[];
+  List<OnlineHomeSection> _onlineHomeSections = <OnlineHomeSection>[];
   bool _onlineFeedAuthenticated = false;
   bool _isOnlineLoading = false;
   bool _isLoadingMoreOnlineSongs = false;
@@ -239,6 +241,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   final StreamController<Duration> _nativePositionController = StreamController<Duration>.broadcast();
   final StreamController<Duration?> _nativeDurationController = StreamController<Duration?>.broadcast();
   Timer? _nativeStatePoller;
+  Timer? _searchNotifyDebounce;
   bool _nativeOnlinePlaying = false;
   bool _nativeOnlinePlayWhenReady = false;
   Duration _nativeOnlinePosition = Duration.zero;
@@ -267,7 +270,13 @@ class MusicPlayerProvider extends ChangeNotifier {
       unawaited(_attachEqualizerToCurrentSession());
     });
     searchController.addListener(() {
-      notifyListeners();
+      // TextEditingController already repaints the input itself. Debounce the
+      // provider notification so typing in Search does not rebuild every
+      // expensive Online/Home glass surface for every key event.
+      _searchNotifyDebounce?.cancel();
+      _searchNotifyDebounce = Timer(const Duration(milliseconds: 90), () {
+        if (hasListeners) notifyListeners();
+      });
     });
     AudioRuntime.setNavigationCallbacks(
       onSkipNext: () => nextTrack(wrap: true),
@@ -352,18 +361,33 @@ class MusicPlayerProvider extends ChangeNotifier {
   }
 
   void _applyNativePlayerState(Map<String, dynamic> state, {bool notify = true}) {
+    // Position/buffer changes arrive every 500 ms. They are emitted only to
+    // the dedicated progress streams below; ChangeNotifier is reserved for
+    // visual state changes (play/pause, queue item, repeat, shuffle, errors).
+    // This prevents the entire Home — including every blur surface — from
+    // rebuilding just because the playback clock advanced.
+    final previousPlaying = _nativeOnlinePlaying;
+    final previousPlayWhenReady = _nativeOnlinePlayWhenReady;
+    final previousState = _nativeOnlineState;
+    final previousMediaId = _nativeOnlineMediaId;
+    final previousDuration = _nativeOnlineDuration;
+    final previousTrackKey = _currentTrack?.libraryKey;
+    final previousIndex = _currentIndex;
+    final previousShuffle = _shuffleEnabled;
+    final previousRepeat = _repeatMode;
+    final previousError = _error;
+
     _nativeOnlinePlaying = state['playing'] == true;
     _nativeOnlinePlayWhenReady = state['playWhenReady'] == true;
     _nativeOnlinePosition = _durationFromNativeMs(state['positionMs']);
     _nativeOnlineBufferedPosition = _durationFromNativeMs(state['bufferedPositionMs']);
     final reportedDuration = _durationFromNativeMs(state['durationMs']);
-    _nativeOnlineDuration = reportedDuration > Duration.zero ? reportedDuration : (activeDisplayTrack?.duration ?? Duration.zero);
+    _nativeOnlineDuration = reportedDuration > Duration.zero
+        ? reportedDuration
+        : (activeDisplayTrack?.duration ?? Duration.zero);
     _nativeOnlineState = '${state['state'] ?? 'idle'}';
     _nativeOnlineMediaId = '${state['mediaId'] ?? ''}'.trim();
 
-    // O player real agora é o ExoPlayer nativo. O sessionId antigo vindo do
-    // just_audio não serve mais para o equalizador; por isso pegamos a sessão
-    // atual do MetrolistNativePlayer e anexamos o equalizador a ela.
     final nativeEqualizerPayload = state['equalizer'];
     if (nativeEqualizerPayload is Map) {
       _applyEqualizerPayload(nativeEqualizerPayload, notify: false);
@@ -375,7 +399,8 @@ class MusicPlayerProvider extends ChangeNotifier {
     if (nativeSessionId > 0) {
       final sessionChanged = _audioSessionId != nativeSessionId;
       _audioSessionId = nativeSessionId;
-      if (_equalizerSupported && (sessionChanged || !_equalizerAttached || _equalizerBands.isEmpty)) {
+      if (_equalizerSupported &&
+          (sessionChanged || !_equalizerAttached || _equalizerBands.isEmpty)) {
         unawaited(_attachEqualizerToCurrentSession());
       }
     }
@@ -403,9 +428,28 @@ class MusicPlayerProvider extends ChangeNotifier {
       _error = 'Erro do player nativo do Metrolist: $nativeError';
       _isPreparingTrack = false;
     }
-    if (!_nativePositionController.isClosed) _nativePositionController.add(_nativeOnlinePosition);
-    if (!_nativeDurationController.isClosed) _nativeDurationController.add(_nativeOnlineDuration > Duration.zero ? _nativeOnlineDuration : null);
-    if (notify) notifyListeners();
+
+    if (!_nativePositionController.isClosed) {
+      _nativePositionController.add(_nativeOnlinePosition);
+    }
+    if (!_nativeDurationController.isClosed &&
+        previousDuration != _nativeOnlineDuration) {
+      _nativeDurationController.add(
+        _nativeOnlineDuration > Duration.zero ? _nativeOnlineDuration : null,
+      );
+    }
+
+    final visualChanged =
+        previousPlaying != _nativeOnlinePlaying ||
+        previousPlayWhenReady != _nativeOnlinePlayWhenReady ||
+        previousState != _nativeOnlineState ||
+        previousMediaId != _nativeOnlineMediaId ||
+        previousTrackKey != _currentTrack?.libraryKey ||
+        previousIndex != _currentIndex ||
+        previousShuffle != _shuffleEnabled ||
+        previousRepeat != _repeatMode ||
+        previousError != _error;
+    if (notify && visualChanged) notifyListeners();
   }
 
   Future<void> _refreshNativePlayerState({bool notify = true}) async {
@@ -522,6 +566,25 @@ class MusicPlayerProvider extends ChangeNotifier {
     );
   }
 
+  OnlineHomeSection _homeSectionFromNative(dynamic value) {
+    final map = _nativeMap(value);
+    return OnlineHomeSection(
+      title: '${map['title'] ?? 'Para você'}'.trim(),
+      subtitle: _emptyToNull('${map['subtitle'] ?? ''}'),
+      thumbnailUrl: _emptyToNull(_highQualityArtworkUrl('${map['thumbnailUrl'] ?? ''}')),
+      songs: _tracksFromNative(map['songs']),
+      albums: _albumsFromNative(map['albums']),
+      artists: _artistsFromNative(map['artists']),
+      playlists: _playlistsFromNative(map['playlists']),
+    );
+  }
+
+  List<OnlineHomeSection> _homeSectionsFromNative(dynamic value) =>
+      _nativeMapList(value)
+          .map(_homeSectionFromNative)
+          .where((section) => section.title.isNotEmpty && !section.isEmpty)
+          .toList(growable: false);
+
   OnlineHomeFeed _homeFeedFromNative(dynamic value) {
     final map = _nativeMap(value);
     return OnlineHomeFeed(
@@ -536,6 +599,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       libraryAlbums: _albumsFromNative(map['libraryAlbums']),
       libraryArtists: _artistsFromNative(map['libraryArtists']),
       libraryPlaylists: _playlistsFromNative(map['libraryPlaylists']),
+      sections: _homeSectionsFromNative(map['sections']),
       authenticated: map['authenticated'] == true,
     );
   }
@@ -936,7 +1000,12 @@ class MusicPlayerProvider extends ChangeNotifier {
         await _clearAccountPersonalizationCache();
       }
       notifyListeners();
-      if (_tab == LibraryTab.online && !_isOnlineLoading) {
+      if (_isLoggedIn && !_isOnlineLoading) {
+        // Warm the complete YouTube Music account feed immediately after a
+        // persisted Google session is restored. This makes Home/Library ready
+        // when the user opens Online instead of starting a heavy fetch then.
+        unawaited(searchOnline(forceQuery: '', refresh: true));
+      } else if (_tab == LibraryTab.online && !_isOnlineLoading) {
         unawaited(searchOnline(forceQuery: '', refresh: true));
       }
     } catch (_) {}
@@ -1019,6 +1088,8 @@ class MusicPlayerProvider extends ChangeNotifier {
           ..._onlineArtists,
         ]),
       );
+  List<OnlineHomeSection> get onlineHomeSections =>
+      List.unmodifiable(_onlineHomeSections);
   List<OnlinePlaylist> get onlineRecommendedPlaylists => List.unmodifiable(
         _dedupePlaylists(<OnlinePlaylist>[
           ..._onlineAccountPlaylists,
@@ -1050,6 +1121,10 @@ class MusicPlayerProvider extends ChangeNotifier {
       List.unmodifiable(_dedupeAlbums(_onlineNewReleaseAlbums));
   List<OnlineAlbum> get onlineAccountAlbums =>
       List.unmodifiable(_dedupeAlbums(_onlineAccountAlbums));
+  List<OnlineArtist> get onlineAccountArtists =>
+      List.unmodifiable(_dedupeRecommendedArtists(_onlineAccountArtists));
+  List<OnlinePlaylist> get onlineAccountPlaylists =>
+      List.unmodifiable(_dedupePlaylists(_onlineAccountPlaylists));
   bool get onlineFeedAuthenticated => _onlineFeedAuthenticated;
   String get onlineActiveQuery => _lastOnlineQuery.trim().toLowerCase();
   List<AudioTrack> get onlineDisplaySongs {
@@ -1470,6 +1545,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     _onlineAccountAlbums = const <OnlineAlbum>[];
     _onlineAccountArtists = const <OnlineArtist>[];
     _onlineAccountPlaylists = const <OnlinePlaylist>[];
+    _onlineHomeSections = const <OnlineHomeSection>[];
     _onlineRecommendedSongs = const <AudioTrack>[];
     _onlineRecommendedArtists = const <OnlineArtist>[];
     _onlineRecommendedPlaylists = const <OnlinePlaylist>[];
@@ -2190,6 +2266,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     _artworkFutureCache.clear();
     _resolvedPlayablePathCache.clear();
     _lyricsCache.clear();
+    _lyricsSourceCache.clear();
     _lyricsFutureCache.clear();
     notifyListeners();
 
@@ -2352,6 +2429,13 @@ class MusicPlayerProvider extends ChangeNotifier {
     return (track.lyrics ?? '').trim();
   }
 
+  String lyricsSourceFor(AudioTrack track) {
+    final cached = (_lyricsSourceCache[track.libraryKey] ?? '').trim();
+    if (cached.isNotEmpty) return cached;
+    if ((track.lyrics ?? '').trim().isNotEmpty) return 'Arquivo';
+    return '';
+  }
+
   bool hasLyricsFor(AudioTrack track) => lyricsFor(track).isNotEmpty;
 
   bool isLoadingLyricsFor(AudioTrack track) => _lyricsFutureCache.containsKey(track.libraryKey);
@@ -2374,14 +2458,9 @@ class MusicPlayerProvider extends ChangeNotifier {
   Future<String> _loadLyrics(AudioTrack track) async {
     try {
       String? lyrics;
-      if (track.isRemote) {
-        lyrics = await _metrolistChannel.invokeMethod<String>('lyrics', {
-          'title': track.title,
-          'artist': track.artist,
-          'album': track.album,
-          'durationMs': track.durationMs,
-        }).timeout(const Duration(seconds: 10));
-      } else {
+      String source = '';
+
+      if (!track.isRemote) {
         lyrics = await _scannerChannel.invokeMethod<String>('getLyrics', {
           'uri': track.uri,
           'path': track.path,
@@ -2389,22 +2468,32 @@ class MusicPlayerProvider extends ChangeNotifier {
           'artist': track.artist,
           'album': track.album,
         }).timeout(const Duration(seconds: 6));
+        if ((lyrics ?? '').trim().isNotEmpty) {
+          source = 'Arquivo';
+        }
+      }
 
-        // Se a música local/baixada não tiver letra embutida nas tags,
-        // usa o mesmo buscador nativo de letras do Metrolist/LrcLib.
-        if ((lyrics ?? '').trim().isEmpty) {
-          lyrics = await _metrolistChannel.invokeMethod<String>('lyrics', {
+      // Network lyrics are resolved in one native chain: LRCLIB first, then
+      // KuGou only when LRCLIB returns no usable content. The native bridge
+      // also reports which source won so the player can attribute it.
+      if ((lyrics ?? '').trim().isEmpty) {
+        final payload = await _metrolistChannel.invokeMapMethod<String, dynamic>(
+          'lyricsV2',
+          <String, dynamic>{
             'title': track.title,
             'artist': track.artist,
             'album': track.album,
             'durationMs': track.durationMs,
-          }).timeout(const Duration(seconds: 10));
-        }
+          },
+        ).timeout(const Duration(seconds: 14));
+        lyrics = '${payload?['lyrics'] ?? ''}';
+        source = '${payload?['source'] ?? ''}'.trim();
       }
 
       final cleaned = (lyrics ?? '').trim();
       _lyricsCache[track.libraryKey] = cleaned;
       if (cleaned.isNotEmpty) {
+        _lyricsSourceCache[track.libraryKey] = source.isEmpty ? 'Online' : source;
         notifyListeners();
       }
       return cleaned;
@@ -2599,8 +2688,34 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   List<OnlineArtist> _rankRecommendedArtists(Iterable<OnlineArtist> source) {
     final ranked = _dedupeRecommendedArtists(source).toList(growable: false);
+    if (ranked.length < 2) return ranked;
+
+    // Precompute the preference profile once per ranking pass. The old
+    // comparator rebuilt the whole profile repeatedly (O(n log n) profile
+    // allocations) whenever Flutter requested the artist list.
+    final weights = _preferredArtistWeights();
+    final scores = <String, int>{};
+    for (final artist in ranked) {
+      final normalizedName = _normalizeRecommendationText(artist.name);
+      var score = weights[normalizedName] ?? 0;
+      for (final entry in weights.entries) {
+        if (entry.key == normalizedName) continue;
+        if (normalizedName.contains(entry.key) || entry.key.contains(normalizedName)) {
+          score += (entry.value / 2).round();
+        }
+      }
+      if (artist.thumbnailUrl.trim().isNotEmpty) score += 3;
+      scores[artist.browseId.isNotEmpty ? artist.browseId : normalizedName] = score;
+    }
+
+    int scoreOf(OnlineArtist artist) =>
+        scores[artist.browseId.isNotEmpty
+            ? artist.browseId
+            : _normalizeRecommendationText(artist.name)] ??
+        0;
+
     ranked.sort((a, b) {
-      final scoreCmp = _recommendedArtistScore(b).compareTo(_recommendedArtistScore(a));
+      final scoreCmp = scoreOf(b).compareTo(scoreOf(a));
       if (scoreCmp != 0) return scoreCmp;
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
@@ -2792,8 +2907,83 @@ class MusicPlayerProvider extends ChangeNotifier {
 
   List<AudioTrack> _rankOnlineRecommendedSongs(Iterable<AudioTrack> source) {
     final ranked = _dedupeTracks(source).where((track) => track.isRemote).toList();
+    if (ranked.length < 2) return ranked;
+
+    final artistWeights = _preferredArtistWeights();
+    final genreWeights = _preferredGenreWeights();
+    final searchEntries = _onlineSearchAffinity.entries.toList(growable: false);
+    final favoriteTracks = <AudioTrack>[
+      ..._localFavoriteTracks(),
+      ..._onlineFavoriteTracks.values,
+      ..._onlineAccountLikedSongs,
+    ];
+    final playedTracks = <AudioTrack>[
+      ..._playHistory.take(30),
+      ..._onlineAccountHistory.take(50),
+    ];
+
+    final favoriteArtists = <String>{};
+    final favoriteAlbums = <String>{};
+    final favoriteTitles = <String>{};
+    for (final track in favoriteTracks) {
+      if (track.artist.isNotEmpty) favoriteArtists.add(track.artist.toLowerCase());
+      if (track.album.isNotEmpty) favoriteAlbums.add(track.album.toLowerCase());
+      if (track.title.isNotEmpty) favoriteTitles.add(track.title.toLowerCase());
+    }
+    final playedArtists = <String>{};
+    final playedAlbums = <String>{};
+    final playedTitles = <String>{};
+    for (final track in playedTracks) {
+      if (track.artist.isNotEmpty) playedArtists.add(track.artist.toLowerCase());
+      if (track.album.isNotEmpty) playedAlbums.add(track.album.toLowerCase());
+      if (track.title.isNotEmpty) playedTitles.add(track.title.toLowerCase());
+    }
+
+    final scores = <String, int>{};
+    for (final track in ranked) {
+      final haystack = _normalizeRecommendationText(
+        '${track.title} ${track.artist} ${track.album} ${(track.genre ?? '')}',
+      );
+      final artistKey = _normalizeRecommendationText(track.artist);
+      final albumKey = _normalizeRecommendationText(track.album);
+      final trackKey = _normalizeRecommendationText('${track.artist} ${track.title}');
+      final genreKey = _normalizeRecommendationText(track.genre ?? '');
+      var score = artistWeights[artistKey] ?? 0;
+      score += min((_onlineArtistAffinity[artistKey] ?? 0) * 20, 500);
+      score += min((_onlineAlbumAffinity[albumKey] ?? 0) * 12, 300);
+      score += min((_onlineTrackAffinity[trackKey] ?? 0) * 8, 200);
+      if (genreKey.isNotEmpty) score += genreWeights[genreKey] ?? 0;
+
+      for (final search in searchEntries) {
+        final normalized = search.key;
+        if (normalized.isEmpty) continue;
+        if (haystack.contains(normalized)) score += min(80 + search.value * 20, 360);
+        for (final token in normalized.split(RegExp(r'\s+'))) {
+          if (token.length >= 2 && haystack.contains(token)) {
+            score += min(10 + search.value * 4, 70);
+          }
+        }
+      }
+
+      final artistLower = track.artist.toLowerCase();
+      final albumLower = track.album.toLowerCase();
+      final titleLower = track.title.toLowerCase();
+      if (favoriteArtists.contains(artistLower)) score += 110;
+      if (favoriteAlbums.contains(albumLower)) score += 56;
+      if (favoriteTitles.contains(titleLower)) score += 36;
+      if (playedArtists.contains(artistLower)) score += 42;
+      if (playedAlbums.contains(albumLower)) score += 20;
+      if (playedTitles.contains(titleLower)) score += 10;
+      if ((track.artworkUrl ?? '').trim().isNotEmpty) score += 8;
+      if (track.durationMs > 0) score += 8;
+      if ((track.remoteStreamUri ?? '').trim().isNotEmpty) score += 6;
+      if ((track.artistId ?? '').trim().isNotEmpty) score += 12;
+      if ((track.browseId ?? '').trim().isNotEmpty) score += 10;
+      scores[track.libraryKey] = score;
+    }
+
     ranked.sort((a, b) {
-      final scoreCmp = _onlineRecommendationScore(b).compareTo(_onlineRecommendationScore(a));
+      final scoreCmp = (scores[b.libraryKey] ?? 0).compareTo(scores[a.libraryKey] ?? 0);
       if (scoreCmp != 0) return scoreCmp;
       final artistCmp = a.artist.toLowerCase().compareTo(b.artist.toLowerCase());
       if (artistCmp != 0) return artistCmp;
@@ -2910,6 +3100,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     final previousAccountAlbums = List<OnlineAlbum>.from(_onlineAccountAlbums);
     final previousAccountArtists = List<OnlineArtist>.from(_onlineAccountArtists);
     final previousAccountPlaylists = List<OnlinePlaylist>.from(_onlineAccountPlaylists);
+    final previousHomeSections = List<OnlineHomeSection>.from(_onlineHomeSections);
     final previousFeedAuthenticated = _onlineFeedAuthenticated;
     _isOnlineLoading = true;
     _onlineError = null;
@@ -3030,6 +3221,7 @@ class MusicPlayerProvider extends ChangeNotifier {
           libraryAlbums: const <OnlineAlbum>[],
           libraryArtists: const <OnlineArtist>[],
           libraryPlaylists: const <OnlinePlaylist>[],
+          sections: const <OnlineHomeSection>[],
           authenticated: false,
         );
       }
@@ -3049,17 +3241,21 @@ class MusicPlayerProvider extends ChangeNotifier {
       ]).take(120).toList(growable: false);
       _onlineAccountHistory
         ..clear()
-        ..addAll(_dedupeTracks(feed.accountHistory).take(120));
+        ..addAll(_dedupeTracks(feed.accountHistory).take(400));
       _onlineAccountLikedSongs
         ..clear()
-        ..addAll(_dedupeTracks(feed.likedSongs).take(120));
+        ..addAll(_dedupeTracks(feed.likedSongs).take(500));
       _onlineAccountLibrarySongs =
-          _dedupeTracks(feed.librarySongs).take(120).toList(growable: false);
+          _dedupeTracks(feed.librarySongs).take(500).toList(growable: false);
       _onlineNewReleaseSongs = _dedupeTracks(feed.newReleaseSongs).take(80).toList(growable: false);
       _onlineNewReleaseAlbums = _dedupeAlbums(feed.newReleaseAlbums).take(60).toList(growable: false);
-      _onlineAccountAlbums = _dedupeAlbums(feed.libraryAlbums).take(80).toList(growable: false);
-      _onlineAccountArtists = _dedupeRecommendedArtists(feed.libraryArtists).take(80).toList(growable: false);
-      _onlineAccountPlaylists = _dedupePlaylists(feed.libraryPlaylists).take(80).toList(growable: false);
+      _onlineAccountAlbums = _dedupeAlbums(feed.libraryAlbums).take(240).toList(growable: false);
+      _onlineAccountArtists = _dedupeRecommendedArtists(feed.libraryArtists).take(240).toList(growable: false);
+      _onlineAccountPlaylists = _dedupePlaylists(feed.libraryPlaylists).take(240).toList(growable: false);
+      _onlineHomeSections = feed.sections
+          .where((section) => !section.isEmpty)
+          .take(32)
+          .toList(growable: false);
       _onlineFeedAuthenticated = feed.authenticated;
       if (feed.authenticated) {
         unawaited(_persistAccountPersonalizationCache());
@@ -3239,6 +3435,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       _onlineAccountAlbums = previousAccountAlbums;
       _onlineAccountArtists = previousAccountArtists;
       _onlineAccountPlaylists = previousAccountPlaylists;
+      _onlineHomeSections = previousHomeSections;
       _onlineFeedAuthenticated = previousFeedAuthenticated;
     } finally {
       if (requestId == _onlineSearchRequestSerial) {
@@ -4941,6 +5138,10 @@ class MusicPlayerProvider extends ChangeNotifier {
     _currentIndexSub?.cancel();
     _playbackEventSub?.cancel();
     _audioSessionIdSub?.cancel();
+    _nativeStatePoller?.cancel();
+    _searchNotifyDebounce?.cancel();
+    _nativePositionController.close();
+    _nativeDurationController.close();
     searchController.dispose();
     unawaited(_setPlaybackWakeLock(false));
     super.dispose();

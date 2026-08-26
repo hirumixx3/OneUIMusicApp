@@ -1125,6 +1125,7 @@ List<Widget> _metrolistSongRailSlivers({
   required BuildContext context,
   required String title,
   required List<AudioTrack> songs,
+  String? subtitle,
   int skip = 0,
   int take = 12,
 }) {
@@ -1135,6 +1136,7 @@ List<Widget> _metrolistSongRailSlivers({
     SliverToBoxAdapter(
       child: _YoutubeSectionHeader(
         title: title,
+        subtitle: subtitle,
         actionLabel: 'Reproduzir tudo',
         onActionTap: () =>
             _openTrackPlayer(context, visible.first, queue: songs),
@@ -1170,6 +1172,7 @@ List<Widget> _metrolistPlaylistRailSlivers({
   required BuildContext context,
   required String title,
   required List<OnlinePlaylist> playlists,
+  String? subtitle,
   int skip = 0,
   int take = 12,
 }) {
@@ -1178,7 +1181,11 @@ List<Widget> _metrolistPlaylistRailSlivers({
   return <Widget>[
     const SliverToBoxAdapter(child: SizedBox(height: 26)),
     SliverToBoxAdapter(
-      child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo'),
+      child: _YoutubeSectionHeader(
+        title: title,
+        subtitle: subtitle,
+        actionLabel: 'Ver tudo',
+      ),
     ),
     SliverToBoxAdapter(
       child: SizedBox(
@@ -1214,6 +1221,7 @@ List<Widget> _metrolistAlbumRailSlivers({
   required BuildContext context,
   required String title,
   required List<OnlineAlbum> albums,
+  String? subtitle,
   int skip = 0,
   int take = 12,
 }) {
@@ -1222,7 +1230,11 @@ List<Widget> _metrolistAlbumRailSlivers({
   return <Widget>[
     const SliverToBoxAdapter(child: SizedBox(height: 26)),
     SliverToBoxAdapter(
-      child: _YoutubeSectionHeader(title: title, actionLabel: 'Ver tudo'),
+      child: _YoutubeSectionHeader(
+        title: title,
+        subtitle: subtitle,
+        actionLabel: 'Ver tudo',
+      ),
     ),
     SliverToBoxAdapter(
       child: SizedBox(
@@ -1250,6 +1262,89 @@ List<Widget> _metrolistAlbumRailSlivers({
       ),
     ),
   ];
+}
+
+
+List<Widget> _metrolistNativeSectionSlivers({
+  required BuildContext context,
+  required OnlineHomeSection section,
+}) {
+  final title = section.title.trim();
+  if (title.isEmpty || section.isEmpty) return const <Widget>[];
+  final subtitle = section.subtitle?.trim();
+
+  // Native YouTube Music home carousels normally contain a single dominant
+  // type. Keeping that type and the server-provided title/strapline makes the
+  // Flutter Home follow the connected account instead of inventing generic
+  // local sections.
+  final counts = <String, int>{
+    'songs': section.songs.length,
+    'albums': section.albums.length,
+    'artists': section.artists.length,
+    'playlists': section.playlists.length,
+  };
+  final dominant = counts.entries.reduce(
+    (a, b) => b.value > a.value ? b : a,
+  ).key;
+
+  switch (dominant) {
+    case 'albums':
+      return _metrolistAlbumRailSlivers(
+        context: context,
+        title: title,
+        subtitle: subtitle,
+        albums: section.albums,
+        take: 18,
+      );
+    case 'artists':
+      final visible = section.artists.take(18).toList(growable: false);
+      if (visible.isEmpty) return const <Widget>[];
+      return <Widget>[
+        const SliverToBoxAdapter(child: SizedBox(height: 26)),
+        SliverToBoxAdapter(
+          child: _YoutubeSectionHeader(title: title, subtitle: subtitle),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 166,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              itemCount: visible.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 14),
+              itemBuilder: (context, index) {
+                final artist = visible[index];
+                return _YoutubeArtistBubble(
+                  artist: artist,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => OnlineArtistScreen(artist: artist),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ];
+    case 'playlists':
+      return _metrolistPlaylistRailSlivers(
+        context: context,
+        title: title,
+        subtitle: subtitle,
+        playlists: section.playlists,
+        take: 18,
+      );
+    case 'songs':
+    default:
+      return _metrolistSongRailSlivers(
+        context: context,
+        title: title,
+        subtitle: subtitle,
+        songs: section.songs,
+        take: 18,
+      );
+  }
 }
 
 class _OnlineShellBody extends StatelessWidget {
@@ -1829,6 +1924,16 @@ class _OnlineLibraryTab extends StatelessWidget {
     final favorites = provider.onlineFavoriteTracks;
     final history = provider.onlineHistoryTracks;
     final playlists = provider.userPlaylists;
+    final accountLiked = provider.onlineAccountLikedSongs;
+    final accountLibrary = provider.onlineAccountLibrarySongs;
+    final accountPlaylists = provider.onlineAccountPlaylists;
+    final accountAlbums = provider.onlineAccountAlbums;
+    final accountArtists = provider.onlineAccountArtists;
+    final hasGoogleLibrary = accountLiked.isNotEmpty ||
+        accountLibrary.isNotEmpty ||
+        accountPlaylists.isNotEmpty ||
+        accountAlbums.isNotEmpty ||
+        accountArtists.isNotEmpty;
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -1866,12 +1971,16 @@ class _OnlineLibraryTab extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'HIRUMISU',
+                        provider.isLoggedIn && provider.accountName.trim().isNotEmpty
+                            ? provider.accountName.trim()
+                            : 'HIRUMISU',
                         style: Theme.of(context).textTheme.labelLarge
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       Text(
-                        'Biblioteca online',
+                        provider.isLoggedIn
+                            ? 'Sua biblioteca do YouTube Music'
+                            : 'Biblioteca online',
                         style: Theme.of(context).textTheme.headlineSmall
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
@@ -1882,6 +1991,34 @@ class _OnlineLibraryTab extends StatelessWidget {
             ),
           ),
         ),
+        if (!provider.isLoggedIn)
+          SliverToBoxAdapter(
+            child: OneUi9Glass(
+              margin: const EdgeInsets.fromLTRB(4, 0, 4, 20),
+              padding: const EdgeInsets.all(18),
+              radius: 24,
+              blur: 22,
+              clear: true,
+              child: Row(
+                children: [
+                  const Icon(Icons.account_circle_rounded, size: 38),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Text(
+                      'Conecte sua conta Google para trazer playlists, músicas curtidas, artistas e álbuns do YouTube Music.',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  OneUi9GlassButton(
+                    onPressed: () => provider.loginWithGoogle(),
+                    compact: true,
+                    active: true,
+                    child: const Text('Entrar'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         SliverGrid(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -1908,8 +2045,88 @@ class _OnlineLibraryTab extends StatelessWidget {
                 onGoHome();
               },
             ),
+            if (provider.isLoggedIn)
+              _LibraryShortcutCard(
+                icon: Icons.favorite_rounded,
+                title: 'Músicas que você curtiu',
+                subtitle: '${accountLiked.length} itens',
+                onTap: () {
+                  if (accountLiked.isNotEmpty) {
+                    _openTrackPlayer(context, accountLiked.first, queue: accountLiked);
+                  } else {
+                    onGoHome();
+                  }
+                },
+              ),
+            if (provider.isLoggedIn)
+              _LibraryShortcutCard(
+                icon: Icons.cloud_done_rounded,
+                title: 'Salvas na conta',
+                subtitle: '${accountLibrary.length} músicas',
+                onTap: () {
+                  if (accountLibrary.isNotEmpty) {
+                    _openTrackPlayer(context, accountLibrary.first, queue: accountLibrary);
+                  } else {
+                    onGoHome();
+                  }
+                },
+              ),
           ]),
         ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Músicas que você curtiu',
+          subtitle: provider.isLoggedIn ? 'Da sua conta do YouTube Music' : null,
+          songs: accountLiked,
+          take: 18,
+        ),
+        ..._metrolistSongRailSlivers(
+          context: context,
+          title: 'Músicas salvas',
+          subtitle: provider.isLoggedIn ? 'Biblioteca da sua conta' : null,
+          songs: accountLibrary,
+          take: 18,
+        ),
+        ..._metrolistPlaylistRailSlivers(
+          context: context,
+          title: 'Playlists da sua conta',
+          playlists: accountPlaylists,
+          take: 18,
+        ),
+        ..._metrolistAlbumRailSlivers(
+          context: context,
+          title: 'Álbuns da sua conta',
+          albums: accountAlbums,
+          take: 18,
+        ),
+        if (accountArtists.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 26)),
+          const SliverToBoxAdapter(
+            child: _YoutubeSectionHeader(title: 'Artistas da sua biblioteca'),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 166,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                itemCount: accountArtists.take(18).length,
+                separatorBuilder: (_, __) => const SizedBox(width: 14),
+                itemBuilder: (context, index) {
+                  final artist = accountArtists[index];
+                  return _YoutubeArtistBubble(
+                    artist: artist,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => OnlineArtistScreen(artist: artist),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
         if (history.isNotEmpty) ...[
           const SliverToBoxAdapter(child: SizedBox(height: 26)),
           SliverToBoxAdapter(
@@ -1997,11 +2214,16 @@ class _OnlineLibraryTab extends StatelessWidget {
             }, childCount: (playlists.length * 2 - 1).clamp(0, 999).toInt()),
           ),
         ],
-        if (history.isEmpty && favorites.isEmpty && playlists.isEmpty)
+        if (history.isEmpty &&
+            favorites.isEmpty &&
+            playlists.isEmpty &&
+            !hasGoogleLibrary)
           SliverFillRemaining(
             hasScrollBody: false,
             child: _EmptyState(
-              message: 'Sua biblioteca online aparece aqui conforme você ouvir, favoritar e criar playlists.',
+              message: provider.isLoggedIn
+                  ? 'A conta está conectada, mas o YouTube Music ainda não retornou itens para a biblioteca.'
+                  : 'Sua biblioteca online aparece aqui conforme você ouvir, favoritar e criar playlists.',
             ),
           ),
         SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
@@ -2394,6 +2616,9 @@ class _ArtistsTabState extends State<_ArtistsTab>
                             ? Image.network(
                                 artist.thumbnailUrl,
                                 fit: BoxFit.cover,
+                                cacheWidth: 220,
+                                cacheHeight: 220,
+                                filterQuality: FilterQuality.medium,
                                 errorBuilder: (_, __, ___) =>
                                     const Icon(Icons.person_rounded, size: 40),
                               )
@@ -2973,6 +3198,37 @@ class _OnlineTabState extends State<_OnlineTab>
         .toList(growable: false);
     final featuredPlaylists = playlists.take(12).toList(growable: false);
     final pickSongs = personalizedSongs.take(24).toList(growable: false);
+    final quickTiles = <Widget>[
+      for (final track in featuredSongs.take(5))
+        _YoutubeMusicTile(
+          title: track.title,
+          subtitle: track.artist,
+          imageUrl: track.artworkUrl ?? '',
+          onTap: () => _openTrackPlayer(context, track, queue: songs),
+        ),
+      for (final playlist in featuredPlaylists.take(2))
+        _YoutubeMusicTile(
+          title: playlist.title,
+          subtitle: playlist.author,
+          imageUrl: playlist.thumbnailUrl,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => OnlinePlaylistScreen(playlist: playlist),
+            ),
+          ),
+        ),
+      for (final artist in artists.take(2))
+        _YoutubeMusicTile(
+          title: artist.name,
+          subtitle: 'Artista',
+          imageUrl: artist.thumbnailUrl,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => OnlineArtistScreen(artist: artist),
+            ),
+          ),
+        ),
+    ].take(9).toList(growable: false);
     final moodChips = const <String, String>{
       'Podcasts': 'podcasts música Brasil',
       'Energia': 'músicas animadas energia',
@@ -3067,38 +3323,22 @@ class _OnlineTabState extends State<_OnlineTab>
                 childAspectRatio: 0.82,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  if (featuredSongs.isNotEmpty) {
-                    final track = featuredSongs[index];
-                    return _YoutubeMusicTile(
-                      title: track.title,
-                      imageUrl: track.artworkUrl ?? '',
-                      onTap: () =>
-                          _openTrackPlayer(context, track, queue: songs),
-                    );
-                  }
-                  if (featuredPlaylists.isNotEmpty) {
-                    final playlist = featuredPlaylists[index];
-                    return _YoutubeMusicTile(
-                      title: playlist.title,
-                      imageUrl: playlist.thumbnailUrl,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              OnlinePlaylistScreen(playlist: playlist),
-                        ),
-                      ),
-                    );
-                  }
-                  return const _YoutubeLoadingTile();
-                },
-                childCount: featuredSongs.isNotEmpty
-                    ? featuredSongs.length.clamp(0, 9).toInt()
-                    : featuredPlaylists.isNotEmpty
-                    ? featuredPlaylists.length.clamp(0, 9).toInt()
-                    : 9,
+                (context, index) => quickTiles.isNotEmpty
+                    ? quickTiles[index]
+                    : const _YoutubeLoadingTile(),
+                childCount: quickTiles.isNotEmpty ? quickTiles.length : 9,
               ),
             ),
+          ),
+        // Render the real carousel structure returned by YouTube Music. The
+        // native bridge keeps each section title/type, so a connected Google
+        // account now gets the same evolving Home composition (mixes,
+        // community playlists, similar artists, releases, stations, etc.)
+        // instead of only a fixed set of Flutter-generated categories.
+        for (final section in provider.onlineHomeSections.take(18))
+          ..._metrolistNativeSectionSlivers(
+            context: context,
+            section: section,
           ),
         ..._metrolistSongRailSlivers(
           context: context,
@@ -3472,11 +3712,13 @@ class _YoutubeMusicChip extends StatelessWidget {
 class _YoutubeSectionHeader extends StatelessWidget {
   const _YoutubeSectionHeader({
     required this.title,
+    this.subtitle,
     this.actionLabel,
     this.onActionTap,
   });
 
   final String title;
+  final String? subtitle;
   final String? actionLabel;
   final VoidCallback? onActionTap;
 
@@ -3487,10 +3729,27 @@ class _YoutubeSectionHeader extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w900),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                  Text(
+                    subtitle!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: context.oneUiSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                ],
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ],
             ),
           ),
           if (actionLabel != null)
@@ -3986,11 +4245,16 @@ class _RemoteArtworkBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppStrings.of(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final logicalTarget = size ?? 180.0;
+    final cachePixels = (logicalTarget * dpr).round().clamp(160, 900);
     final child = imageUrl.trim().isNotEmpty
         ? Image.network(
             imageUrl,
             fit: BoxFit.cover,
+            cacheWidth: cachePixels,
+            cacheHeight: cachePixels,
+            filterQuality: FilterQuality.medium,
             errorBuilder: (_, __, ___) => _fallback(),
           )
         : _fallback();

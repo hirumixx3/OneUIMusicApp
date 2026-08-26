@@ -342,65 +342,67 @@ class OneUi9Backdrop extends StatelessWidget {
     final dark = context.oneUiDark;
     return ColoredBox(
       color: dark ? const Color(0xFF070B13) : const Color(0xFFF5F7FF),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: dark
-                    ? const [
-                        Color(0xFF070B13),
-                        Color(0xFF0D1728),
-                        Color(0xFF171225),
-                        Color(0xFF080C15),
-                      ]
-                    : const [
-                        Color(0xFFF9FBFF),
-                        Color(0xFFEAF1FF),
-                        Color(0xFFF4ECFF),
-                        Color(0xFFF8FAFF),
-                      ],
-                stops: const [0, 0.38, 0.72, 1],
+      child: BackdropGroup(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: dark
+                      ? const [
+                          Color(0xFF070B13),
+                          Color(0xFF0D1728),
+                          Color(0xFF171225),
+                          Color(0xFF080C15),
+                        ]
+                      : const [
+                          Color(0xFFF9FBFF),
+                          Color(0xFFEAF1FF),
+                          Color(0xFFF4ECFF),
+                          Color(0xFFF8FAFF),
+                        ],
+                  stops: const [0, 0.38, 0.72, 1],
+                ),
               ),
             ),
-          ),
-          const Positioned(
-            top: -150,
-            right: -120,
-            child: _LiquidOrb(size: 340, color: OneUi9.violet),
-          ),
-          const Positioned(
-            top: 230,
-            left: -150,
-            child: _LiquidOrb(size: 310, color: OneUi9.cyan),
-          ),
-          const Positioned(
-            bottom: -170,
-            right: -100,
-            child: _LiquidOrb(size: 360, color: OneUi9.pink),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: dark
-                    ? [
-                        Colors.black.withOpacity(0.05),
-                        Colors.black.withOpacity(0.22),
-                      ]
-                    : [
-                        Colors.white.withOpacity(0.03),
-                        Colors.white.withOpacity(0.20),
-                      ],
+            const Positioned(
+              top: -150,
+              right: -120,
+              child: _LiquidOrb(size: 340, color: OneUi9.violet),
+            ),
+            const Positioned(
+              top: 230,
+              left: -150,
+              child: _LiquidOrb(size: 310, color: OneUi9.cyan),
+            ),
+            const Positioned(
+              bottom: -170,
+              right: -100,
+              child: _LiquidOrb(size: 360, color: OneUi9.pink),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: dark
+                      ? [
+                          Colors.black.withOpacity(0.05),
+                          Colors.black.withOpacity(0.22),
+                        ]
+                      : [
+                          Colors.white.withOpacity(0.03),
+                          Colors.white.withOpacity(0.20),
+                        ],
+                ),
               ),
             ),
-          ),
-          child,
-        ],
+            child,
+          ],
+        ),
       ),
     );
   }
@@ -472,45 +474,67 @@ class OneUi9Glass extends StatelessWidget {
     final transparencyFactor = context.oneUiTransparencyFactor;
     final baseSurface =
         tint ?? (strong ? context.oneUiGlassStrong : context.oneUiGlass);
-    final surface = _oneUiScaledOpacity(baseSurface, transparencyFactor);
     final effectiveBlur = blur * blurFactor;
+
+    // A translucent white glass tint cannot simply be made opaque when blur is
+    // disabled: in dark mode that turns cards/buttons into solid white blocks
+    // and makes the foreground unreadable. Use an opaque theme-safe surface
+    // and only blend a small amount of the requested tint into it instead.
+    final noBlurBase = context.oneUiDark
+        ? (strong ? const Color(0xF51A2231) : const Color(0xF2151B26))
+        : (strong ? const Color(0xFAF7F9FF) : const Color(0xF5F1F4FA));
+    final noBlurSurface = Color.alphaBlend(
+      baseSurface.withOpacity(
+        clear
+            ? (context.oneUiDark ? 0.13 : 0.18)
+            : (context.oneUiDark ? 0.18 : 0.24),
+      ),
+      noBlurBase,
+    );
+    final surface = effectiveBlur <= 0
+        ? noBlurSurface
+        : _oneUiScaledOpacity(baseSurface, transparencyFactor);
+    final effectiveBorder = effectiveBlur <= 0
+        ? (borderColor ??
+            (context.oneUiDark
+                ? Colors.white.withOpacity(0.14)
+                : Colors.black.withOpacity(0.09)))
+        : _oneUiScaledOpacity(
+            borderColor ?? context.oneUiOutline,
+            transparencyFactor,
+          );
 
     final decorated = DecoratedBox(
       decoration: BoxDecoration(
         color: surface,
         borderRadius: borderRadius,
-        border: Border.all(
-          color: _oneUiScaledOpacity(
-            borderColor ?? context.oneUiOutline,
-            transparencyFactor,
-          ),
-        ),
+        border: Border.all(color: effectiveBorder),
         gradient: effectiveBlur <= 0
             ? null
             : LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            _oneUiScaledOpacity(
-              Colors.white.withOpacity(
-                clear
-                    ? (context.oneUiDark ? 0.11 : 0.30)
-                    : (context.oneUiDark ? 0.12 : 0.46),
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _oneUiScaledOpacity(
+                    Colors.white.withOpacity(
+                      clear
+                          ? (context.oneUiDark ? 0.11 : 0.30)
+                          : (context.oneUiDark ? 0.12 : 0.46),
+                    ),
+                    transparencyFactor,
+                  ),
+                  surface,
+                  _oneUiScaledOpacity(
+                    OneUi9.accent.withOpacity(
+                      clear
+                          ? (context.oneUiDark ? 0.025 : 0.018)
+                          : (context.oneUiDark ? 0.035 : 0.025),
+                    ),
+                    transparencyFactor,
+                  ),
+                ],
+                stops: const [0, 0.42, 1],
               ),
-              transparencyFactor,
-            ),
-            surface,
-            _oneUiScaledOpacity(
-              OneUi9.accent.withOpacity(
-                clear
-                    ? (context.oneUiDark ? 0.025 : 0.018)
-                    : (context.oneUiDark ? 0.035 : 0.025),
-              ),
-              transparencyFactor,
-            ),
-          ],
-          stops: const [0, 0.42, 1],
-        ),
       ),
       child: padding == null ? child : Padding(padding: padding!, child: child),
     );
@@ -520,8 +544,11 @@ class OneUi9Glass extends StatelessWidget {
     // when the master toggle/slider brings blur to zero this avoids that
     // cost rather than just rendering an invisible blur.
     final blurred = effectiveBlur > 0
-        ? BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: effectiveBlur, sigmaY: effectiveBlur),
+        ? BackdropFilter.grouped(
+            filter: ImageFilter.blur(
+              sigmaX: effectiveBlur,
+              sigmaY: effectiveBlur,
+            ),
             child: decorated,
           )
         : decorated;
