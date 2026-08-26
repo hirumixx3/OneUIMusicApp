@@ -544,7 +544,7 @@ class OneUi9Glass extends StatelessWidget {
     // when the master toggle/slider brings blur to zero this avoids that
     // cost rather than just rendering an invisible blur.
     final blurred = effectiveBlur > 0
-        ? BackdropFilter.grouped(
+        ? BackdropFilter(
             filter: ImageFilter.blur(
               sigmaX: effectiveBlur,
               sigmaY: effectiveBlur,

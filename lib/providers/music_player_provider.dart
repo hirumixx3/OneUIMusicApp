@@ -809,6 +809,53 @@ class MusicPlayerProvider extends ChangeNotifier {
         }),
       );
 
+  Future<Map<String, dynamic>> _accountLibraryNative() async =>
+      _invokeMetrolistMap('accountLibrary');
+
+  Future<void> _refreshFullAccountLibraryInBackground() async {
+    if (!_isLoggedIn) return;
+    try {
+      final payload = await _accountLibraryNative().timeout(const Duration(seconds: 90));
+      if (payload['authenticated'] != true) return;
+      final songs = _tracksFromNative(payload['songs']);
+      final albums = _albumsFromNative(payload['albums']);
+      final artists = _artistsFromNative(payload['artists']);
+      final playlists = _playlistsFromNative(payload['playlists']);
+
+      final mergedSongs = _dedupeTracks(<AudioTrack>[
+        ..._onlineAccountLibrarySongs,
+        ...songs,
+      ]);
+      final mergedAlbums = _dedupeAlbums(<OnlineAlbum>[
+        ..._onlineAccountAlbums,
+        ...albums,
+      ]);
+      final mergedArtists = _dedupeRecommendedArtists(<OnlineArtist>[
+        ..._onlineAccountArtists,
+        ...artists,
+      ]);
+      final mergedPlaylists = _dedupePlaylists(<OnlinePlaylist>[
+        ..._onlineAccountPlaylists,
+        ...playlists,
+      ]);
+
+      final changed = mergedSongs.length != _onlineAccountLibrarySongs.length ||
+          mergedAlbums.length != _onlineAccountAlbums.length ||
+          mergedArtists.length != _onlineAccountArtists.length ||
+          mergedPlaylists.length != _onlineAccountPlaylists.length;
+      _onlineAccountLibrarySongs = mergedSongs.take(2000).toList(growable: false);
+      _onlineAccountAlbums = mergedAlbums.take(2000).toList(growable: false);
+      _onlineAccountArtists = mergedArtists.take(2000).toList(growable: false);
+      _onlineAccountPlaylists = mergedPlaylists.take(2000).toList(growable: false);
+      if (changed) {
+        await _persistAccountPersonalizationCache();
+        notifyListeners();
+      }
+    } catch (_) {
+      // Home remains usable even if the deep sync times out/offline.
+    }
+  }
+
   Future<OnlineSearchResult> _searchNative(String query) async => _searchResultFromNative(
         await _invokeMetrolistMap('search', <String, dynamic>{'query': query}),
       );
@@ -3259,6 +3306,7 @@ class MusicPlayerProvider extends ChangeNotifier {
       _onlineFeedAuthenticated = feed.authenticated;
       if (feed.authenticated) {
         unawaited(_persistAccountPersonalizationCache());
+        unawaited(_refreshFullAccountLibraryInBackground());
       }
 
       var mergedSongs = _dedupeTracks(<AudioTrack>[

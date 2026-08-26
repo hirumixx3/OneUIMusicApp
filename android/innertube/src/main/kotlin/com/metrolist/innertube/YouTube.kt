@@ -1879,6 +1879,53 @@ object YouTube {
             )
         }
 
+    /**
+     * Loads one of YouTube Music's authenticated library filters directly.
+     * This is required for playlists: the playlists tab is exposed by the
+     * service as a continuation token rather than a stable browseId.
+     */
+    suspend fun libraryFiltered(filter: LibraryFilter): Result<LibraryPage> =
+        runCatching {
+            val response =
+                innerTube
+                    .browse(
+                        client = WEB_REMIX,
+                        continuation = filter.value,
+                        setLogin = true,
+                    ).body<BrowseResponse>()
+
+            val sectionContents =
+                response.continuationContents
+                    ?.sectionListContinuation
+                    ?.contents
+                    .orEmpty()
+
+            val gridRenderer = sectionContents.firstNotNullOfOrNull { it.gridRenderer }
+            if (gridRenderer != null) {
+                return@runCatching LibraryPage(
+                    items =
+                        gridRenderer.items
+                            .mapNotNull { it.musicTwoRowItemRenderer }
+                            .mapNotNull { LibraryPage.fromMusicTwoRowItemRenderer(it) },
+                    continuation = gridRenderer.continuations?.getContinuation(),
+                )
+            }
+
+            val shelfRenderer = sectionContents.firstNotNullOfOrNull { it.musicShelfRenderer }
+            if (shelfRenderer != null) {
+                return@runCatching LibraryPage(
+                    items =
+                        shelfRenderer.contents
+                            ?.mapNotNull { it.musicResponsiveListItemRenderer }
+                            ?.mapNotNull { LibraryPage.fromMusicResponsiveListItemRenderer(it) }
+                            .orEmpty(),
+                    continuation = shelfRenderer.continuations?.getContinuation(),
+                )
+            }
+
+            LibraryPage(items = emptyList(), continuation = null)
+        }
+
     suspend fun getChartsPage(continuation: String? = null): Result<ChartsPage> =
         runCatching {
             val response =

@@ -173,6 +173,9 @@ class MainActivity : AudioServiceActivity() {
                             MetrolistOnlineBridge.personalizedHome(applicationContext, seeds)
                         }
                     }
+                    "accountLibrary" -> runAsync(result, "METROLIST_ACCOUNT_LIBRARY_ERROR") {
+                        MetrolistOnlineBridge.accountLibrary(applicationContext)
+                    }
                     "search" -> {
                         val query = call.argument<String>("query") ?: ""
                         runAsync(result, "METROLIST_SEARCH_ERROR") {

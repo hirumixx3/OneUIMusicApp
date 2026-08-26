@@ -89,6 +89,28 @@ object MetrolistOnlineBridge {
         return items.dedupeItems().take(maxItems)
     }
 
+    private suspend fun collectFilteredLibraryItems(
+        filter: YouTube.LibraryFilter,
+        maxItems: Int = 500,
+        maxPages: Int = 12,
+    ): List<YTItem> {
+        val first = withTimeoutOrNull(5_500L) { YouTube.libraryFiltered(filter).getOrNull() }
+            ?: return emptyList()
+        val items = first.items.toMutableList()
+        var continuation = first.continuation
+        val seen = mutableSetOf<String>()
+        var page = 1
+        while (!continuation.isNullOrBlank() && page < maxPages && items.size < maxItems) {
+            val token = continuation ?: break
+            if (!seen.add(token)) break
+            val next = withTimeoutOrNull(4_500L) { YouTube.libraryContinuation(token).getOrNull() } ?: break
+            items += next.items
+            continuation = next.continuation
+            page++
+        }
+        return items.dedupeItems().take(maxItems)
+    }
+
     private suspend fun collectPlaylistSongs(
         playlistId: String,
         maxItems: Int = 500,
@@ -230,11 +252,25 @@ object MetrolistOnlineBridge {
                     "FEmusic_library_corpus_track_albums",
                     "FEmusic_library_corpus_track_artists",
                     "FEmusic_library_corpus_artists",
-                    "FEmusic_library_corpus_track_playlists",
                 )
-                browseIds.map { browseId ->
-                    async { collectLibraryItems(browseId, maxItems = 500, maxPages = 8) }
-                }.awaitAll().flatten().dedupeItems()
+                val regular = browseIds.map { browseId ->
+                    async { collectLibraryItems(browseId, maxItems = 120, maxPages = 2) }
+                }
+                // YouTube Music exposes saved/created playlists through a
+                // library filter token, not reliably through a browseId.
+                val playlists = async {
+                    val recent = collectFilteredLibraryItems(
+                        YouTube.LibraryFilter.FILTER_PLAYLISTS_RECENTLY_SAVED,
+                        maxItems = 120,
+                        maxPages = 2,
+                    )
+                    if (recent.isNotEmpty()) recent else collectFilteredLibraryItems(
+                        YouTube.LibraryFilter.FILTER_PLAYLISTS_ALPHABETICAL,
+                        maxItems = 120,
+                        maxPages = 2,
+                    )
+                }
+                (regular.awaitAll().flatten() + playlists.await()).dedupeItems()
             }
             val releasesDeferred = async {
                 withTimeoutOrNull(6_000L) {
@@ -324,6 +360,59 @@ object MetrolistOnlineBridge {
                 "libraryArtists" to (libraryResult["artists"] ?: emptyList<Map<String, Any?>>()),
                 "libraryPlaylists" to (libraryResult["playlists"] ?: emptyList<Map<String, Any?>>()),
                 "sections" to homeSections.map { homeSectionMap(it) },
+            )
+        }
+    }
+
+    /**
+     * Performs the expensive account-library synchronization separately from
+     * the first Home render. This keeps Home responsive while still importing
+     * the user's complete YouTube Music playlists/library in the background.
+     */
+    fun accountLibrary(context: Context): Map<String, Any?> = runBlocking(Dispatchers.IO) {
+        ensureInitialized(context)
+        val authenticated = !YouTube.cookie.isNullOrBlank()
+        if (!authenticated) {
+            return@runBlocking mapOf(
+                "authenticated" to false,
+                "songs" to emptyList<Map<String, Any?>>(),
+                "albums" to emptyList<Map<String, Any?>>(),
+                "artists" to emptyList<Map<String, Any?>>(),
+                "playlists" to emptyList<Map<String, Any?>>(),
+            )
+        }
+        YouTube.useLoginForBrowse = true
+        supervisorScope {
+            val regularDeferred = listOf(
+                "FEmusic_library_songs",
+                "FEmusic_library_corpus_track_songs",
+                "FEmusic_library_corpus_track_albums",
+                "FEmusic_library_corpus_track_artists",
+                "FEmusic_library_corpus_artists",
+            ).map { browseId ->
+                async { collectLibraryItems(browseId, maxItems = 2_000, maxPages = 40) }
+            }
+            val playlistDeferred = async {
+                val recent = collectFilteredLibraryItems(
+                    YouTube.LibraryFilter.FILTER_PLAYLISTS_RECENTLY_SAVED,
+                    maxItems = 2_000,
+                    maxPages = 80,
+                )
+                val alpha = collectFilteredLibraryItems(
+                    YouTube.LibraryFilter.FILTER_PLAYLISTS_ALPHABETICAL,
+                    maxItems = 2_000,
+                    maxPages = 80,
+                )
+                (recent + alpha).dedupeItems()
+            }
+            val allItems = (regularDeferred.awaitAll().flatten() + playlistDeferred.await()).dedupeItems()
+            val mapped = searchResultMap(allItems, songLimit = 2_000, itemLimit = 2_000)
+            mapOf(
+                "authenticated" to true,
+                "songs" to (mapped["songs"] ?: emptyList<Map<String, Any?>>()),
+                "albums" to (mapped["albums"] ?: emptyList<Map<String, Any?>>()),
+                "artists" to (mapped["artists"] ?: emptyList<Map<String, Any?>>()),
+                "playlists" to (mapped["playlists"] ?: emptyList<Map<String, Any?>>()),
             )
         }
     }
@@ -1242,9 +1331,12 @@ object MetrolistOnlineBridge {
         ensureInitialized(context)
         val id = playlistId.trim().removePrefix("VL")
         val page = YouTube.playlist(id).getOrThrow()
+        val allSongs = collectPlaylistSongs(id, maxItems = 10_000, maxPages = 200)
         mapOf(
             "playlist" to playlistMap(page.playlist),
-            "tracks" to page.songs.dedupeItems().map { songMap(it) },
+            "tracks" to (if (allSongs.isNotEmpty()) allSongs else page.songs)
+                .dedupeItems()
+                .map { songMap(it) },
         )
     }
 
