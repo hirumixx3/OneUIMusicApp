@@ -54,13 +54,16 @@ class _MusicAppState extends State<MusicApp> with WidgetsBindingObserver {
     final previous = _lastLifecycleState;
     _lastLifecycleState = state;
     if (state == AppLifecycleState.resumed &&
-        (previous == AppLifecycleState.paused || previous == AppLifecycleState.inactive || previous == AppLifecycleState.hidden)) {
+        (previous == AppLifecycleState.paused ||
+            previous == AppLifecycleState.inactive ||
+            previous == AppLifecycleState.hidden)) {
+      // Resuming the app must never mutate the navigation stack. The previous
+      // implementation popped every detail route back to Home whenever Android
+      // briefly moved the activity to inactive/paused (notification shade,
+      // permission UI, app switcher, etc.). Keep the exact route/tab/scroll
+      // position and only refresh the playback/runtime state.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final navigator = appNavigatorKey.currentState;
-        if (navigator != null) {
-          navigator.popUntil((route) => route.isFirst);
-        }
         context.read<MusicPlayerProvider>().handleAppResumeFromBackground();
       });
     }

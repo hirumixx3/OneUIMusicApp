@@ -1,7 +1,7 @@
 name: music
 description: Music app with local library scanner and player
 publish_to: 'none'
-version: 3.0.0+5
+version: 3.5.0+6
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

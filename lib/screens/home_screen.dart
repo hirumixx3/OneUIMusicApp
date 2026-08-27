@@ -547,7 +547,7 @@ double _localFloatingOverlayPadding(
   MusicPlayerProvider provider,
 ) {
   if (MediaQuery.viewInsetsOf(context).bottom > 0) return 16;
-  final systemBottom = MediaQuery.viewPaddingOf(context).bottom;
+  final systemBottom = MediaQuery.paddingOf(context).bottom;
   return (provider.currentTrack == null ? 18.0 : 116.0) + systemBottom;
 }
 
@@ -556,7 +556,7 @@ double _onlineFloatingOverlayPadding(
   MusicPlayerProvider provider,
 ) {
   if (MediaQuery.viewInsetsOf(context).bottom > 0) return 18;
-  final systemBottom = MediaQuery.viewPaddingOf(context).bottom;
+  final systemBottom = MediaQuery.paddingOf(context).bottom;
   return (provider.currentTrack == null ? 88.0 : 184.0) + systemBottom;
 }
 
@@ -635,7 +635,10 @@ class _HomeScreenState extends State<HomeScreen>
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
-          bottom: false,
+          // Keep all interactive app content above Android's navigation/gesture
+          // area. The backdrop may still render edge-to-edge, but lists, the
+          // mini-player and bottom navigation never sit behind system controls.
+          bottom: true,
           child: Stack(
             children: [
               if (onlineMain)
@@ -2121,8 +2124,11 @@ class _OnlineLibraryTab extends StatelessWidget {
               title: 'Histórico',
               subtitle: '${history.length} músicas',
               onTap: () {
-                provider.setOnlineSectionIndex(4);
-                onGoHome();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const OnlineHistoryScreen(),
+                  ),
+                );
               },
             ),
             if (provider.isLoggedIn)
@@ -4862,6 +4868,77 @@ class OnlineArtistAllAlbumsScreen extends StatelessWidget {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+
+class OnlineHistoryScreen extends StatelessWidget {
+  const OnlineHistoryScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<MusicPlayerProvider>();
+    final tracks = provider.isLoggedIn
+        ? provider.onlineAccountHistorySongs
+        : provider.onlineHistoryTracks;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _OneUiDetailHeader(title: 'Histórico'),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: tracks.isEmpty
+                        ? const _EmptyState(
+                            message: 'Nenhuma música online tocada ainda.',
+                          )
+                        : ListView.separated(
+                            key: const PageStorageKey('online_history_detail'),
+                            padding: EdgeInsets.only(
+                              bottom: context.read<MusicPlayerProvider>().currentTrack == null
+                                  ? 18
+                                  : 126,
+                            ),
+                            itemCount: tracks.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final track = tracks[index];
+                              return MusicListTile(
+                                track: track,
+                                isDark: isDark,
+                                isFavorite: provider.isFavorite(track),
+                                onFavoriteTap: () =>
+                                    provider.toggleFavorite(track),
+                                onTap: () => _openTrackPlayer(
+                                  context,
+                                  track,
+                                  queue: tracks,
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            if (provider.currentTrack != null)
+              const Align(
+                alignment: Alignment.bottomCenter,
+                child: FloatingPlayerBar(),
+              ),
+          ],
         ),
       ),
     );
