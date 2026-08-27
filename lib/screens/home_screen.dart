@@ -374,6 +374,8 @@ Future<void> _showAddTracksToPlaylistSheet(
 void _showOnlineAccountSheet(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -902,6 +904,8 @@ void _showOnlineNavigationSheet(
   final t = AppStrings.of(context);
   showModalBottomSheet<void>(
     context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -920,10 +924,13 @@ void _showOnlineNavigationSheet(
         );
       }
 
-      return SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+      final safeBottom = MediaQuery.viewPaddingOf(sheetContext).bottom;
+      final maxHeight = MediaQuery.sizeOf(sheetContext).height * 0.86;
+
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(18, 14, 18, 18 + safeBottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -960,6 +967,13 @@ void _showOnlineNavigationSheet(
                 t.equalizer,
                 () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                ),
+              ),
+              item(
+                Icons.settings_rounded,
+                t.settings,
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
                 ),
               ),
               item(

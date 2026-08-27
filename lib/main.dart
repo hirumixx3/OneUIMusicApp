@@ -106,7 +106,15 @@ class _MusicAppState extends State<MusicApp> with WidgetsBindingObserver {
       ],
       navigatorKey: appNavigatorKey,
       builder: (context, child) => OneUi9Backdrop(
-        child: child ?? const SizedBox.shrink(),
+        // Keep the visual backdrop edge-to-edge, but constrain the entire
+        // Navigator (every screen, dialog and bottom sheet) to Android's safe
+        // display area. SafeArea also rewrites MediaQuery padding for its
+        // descendants, so screens that already use SafeArea are not padded
+        // twice. This prevents controls from ever sitting under the system
+        // navigation/gesture bar while preserving the Liquid Glass background.
+        child: SafeArea(
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
       home: const HomeScreen(),
     );
