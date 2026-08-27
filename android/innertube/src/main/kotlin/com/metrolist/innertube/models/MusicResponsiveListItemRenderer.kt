@@ -21,14 +21,14 @@ import kotlinx.serialization.json.JsonNames
  */
 @Serializable
 data class MusicResponsiveListItemRenderer(
-    val badges: List<Badges>?,
-    val fixedColumns: List<FlexColumn>?,
-    val flexColumns: List<FlexColumn>,
-    val thumbnail: ThumbnailRenderer?,
-    val menu: Menu?,
-    val playlistItemData: PlaylistItemData?,
-    val overlay: Overlay?,
-    val navigationEndpoint: NavigationEndpoint?,
+    val badges: List<Badges>? = null,
+    val fixedColumns: List<FlexColumn>? = null,
+    val flexColumns: List<FlexColumn> = emptyList(),
+    val thumbnail: ThumbnailRenderer? = null,
+    val menu: Menu? = null,
+    val playlistItemData: PlaylistItemData? = null,
+    val overlay: Overlay? = null,
+    val navigationEndpoint: NavigationEndpoint? = null,
 ) {
     val isSong: Boolean
         get() = navigationEndpoint == null || navigationEndpoint.watchEndpoint != null || navigationEndpoint.watchPlaylistEndpoint != null
@@ -103,8 +103,8 @@ data class MusicResponsiveListItemRenderer(
 
     @Serializable
     data class PlaylistItemData(
-        val playlistSetVideoId: String?,
-        val videoId: String,
+        val playlistSetVideoId: String? = null,
+        val videoId: String = "",
     )
 
     @Serializable

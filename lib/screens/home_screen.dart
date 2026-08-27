@@ -118,6 +118,73 @@ Future<void> _showCreatePlaylistDialog(BuildContext context) async {
   );
 }
 
+Future<void> _showCreateAccountPlaylistDialog(BuildContext context) async {
+  final t = AppStrings.of(context);
+  final provider = context.read<MusicPlayerProvider>();
+  if (!provider.isLoggedIn) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Conecte sua conta Google primeiro.')),
+    );
+    return;
+  }
+  final controller = TextEditingController();
+  String? createdName;
+  try {
+    createdName = await showDialog<String>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Criar playlist no YouTube Music'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(hintText: t.playlistName),
+          onSubmitted: (_) {
+            final name = controller.text.trim();
+            if (name.isEmpty) return;
+            Navigator.of(dialogContext, rootNavigator: true).pop(name);
+          },
+        ),
+        actions: [
+          OneUi9GlassButton(
+            onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(),
+            compact: true,
+            child: Text(t.cancel),
+          ),
+          OneUi9GlassButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isEmpty) return;
+              Navigator.of(dialogContext, rootNavigator: true).pop(name);
+            },
+            compact: true,
+            active: true,
+            child: Text(t.create),
+          ),
+        ],
+      ),
+    );
+  } finally {
+    controller.dispose();
+  }
+
+  final name = (createdName ?? '').trim();
+  if (name.isEmpty || !context.mounted) return;
+  try {
+    final playlist = await provider.createAccountPlaylist(name);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Playlist "${playlist.title}" criada no YouTube Music.')),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Falha ao criar playlist no YouTube Music: $error')),
+    );
+  }
+}
+
 Future<void> _showRenamePlaylistDialog(
   BuildContext context,
   UserPlaylist playlist,
@@ -2034,8 +2101,19 @@ class _OnlineLibraryTab extends StatelessWidget {
                   ? '${accountLiked.length} músicas • YouTube Music'
                   : 'Playlist automática',
               onTap: () {
-                provider.setOnlineSectionIndex(3);
-                onGoHome();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const OnlinePlaylistScreen(
+                      playlist: OnlinePlaylist(
+                        playlistId: 'LM',
+                        title: 'Músicas marcadas com gostei',
+                        author: 'YouTube Music',
+                        thumbnailUrl: '',
+                        songCountText: null,
+                      ),
+                    ),
+                  ),
+                );
               },
             ),
             _LibraryShortcutCard(
@@ -2049,15 +2127,15 @@ class _OnlineLibraryTab extends StatelessWidget {
             ),
             if (provider.isLoggedIn)
               _LibraryShortcutCard(
-                icon: Icons.cloud_done_rounded,
-                title: 'Salvas na conta',
-                subtitle: '${accountLibrary.length} músicas',
+                icon: Icons.download_done_rounded,
+                title: 'Salvas no app',
+                subtitle: '${provider.downloadedTracks.length} downloads',
                 onTap: () {
-                  if (accountLibrary.isNotEmpty) {
-                    _openTrackPlayer(context, accountLibrary.first, queue: accountLibrary);
-                  } else {
-                    onGoHome();
-                  }
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const DownloadedTracksScreen(),
+                    ),
+                  );
                 },
               ),
           ]),
@@ -2069,6 +2147,23 @@ class _OnlineLibraryTab extends StatelessWidget {
           songs: accountLibrary,
           take: 18,
         ),
+        if (provider.isLoggedIn) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OneUi9GlassButton(
+                  onPressed: () => _showCreateAccountPlaylistDialog(context),
+                  icon: const Icon(Icons.add_rounded),
+                  active: true,
+                  child: const Text('Criar playlist no YouTube Music'),
+                ),
+              ),
+            ),
+          ),
+        ],
         ..._metrolistPlaylistRailSlivers(
           context: context,
           title: 'Playlists da sua conta',
@@ -4767,6 +4862,69 @@ class OnlineArtistAllAlbumsScreen extends StatelessWidget {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class DownloadedTracksScreen extends StatelessWidget {
+  const DownloadedTracksScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<MusicPlayerProvider>();
+    final tracks = provider.downloadedTracks;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final subtle = isDark ? Colors.white70 : Colors.black54;
+    return Scaffold(
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _OneUiDetailHeader(title: 'Músicas salvas no app'),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${tracks.length} música${tracks.length == 1 ? '' : 's'} disponível${tracks.length == 1 ? '' : 'is'} offline',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subtle),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: tracks.isEmpty
+                        ? const Center(
+                            child: Text('Nenhuma música foi baixada pelo app ainda.'),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 132),
+                            itemCount: tracks.length,
+                            itemBuilder: (context, index) {
+                              final track = tracks[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: MusicListTile(
+                                  track: track,
+                                  isDark: isDark,
+                                  isFavorite: provider.isFavorite(track),
+                                  onFavoriteTap: () => provider.toggleFavorite(track),
+                                  onTap: () => _openTrackPlayer(context, track, queue: tracks),
+                                  leadingLabel: '${index + 1}',
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: FloatingPlayerBar(),
+            ),
+          ],
         ),
       ),
     );

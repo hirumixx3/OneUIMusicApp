@@ -2004,7 +2004,7 @@ class MusicPlayerProvider extends ChangeNotifier {
     if (videoId.isEmpty) {
       throw Exception('Esta música não possui um videoId do YouTube Music');
     }
-    await _scannerChannel.invokeMethod<dynamic>(
+    await _metrolistChannel.invokeMethod<dynamic>(
       'addSongToAccountPlaylist',
       <String, dynamic>{
         'playlistId': playlistId.replaceFirst(RegExp(r'^VL'), ''),
