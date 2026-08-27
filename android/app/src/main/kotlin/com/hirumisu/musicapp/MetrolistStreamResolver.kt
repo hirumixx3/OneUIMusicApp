@@ -267,6 +267,17 @@ object MetrolistStreamResolver {
             YouTubeClient.ANDROID_NO_SDK,
             YouTubeClient.MOBILE,
             YouTubeClient.IOS,
+
+            // Late compatibility fallbacks. They are deliberately kept AFTER
+            // the existing fast path, so tracks that already start quickly do
+            // not pay for any extra request. They are only reached when the
+            // normal YouTube Music/native clients report UNPLAYABLE or return
+            // no stream. The embedded TV profile is especially useful for
+            // catalog items whose regular player endpoint rejects the same
+            // videoId even though YouTube Music can still play it.
+            YouTubeClient.TVHTML5_SIMPLY_EMBEDDED_PLAYER,
+            YouTubeClient.ANDROID_CREATOR,
+            YouTubeClient.WEB_CREATOR,
         )
 
         for (client in clients) {
