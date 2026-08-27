@@ -383,6 +383,17 @@ object MetrolistOnlineBridge {
         }
         YouTube.useLoginForBrowse = true
         supervisorScope {
+            val likedDeferred = async {
+                collectPlaylistSongs("LM", maxItems = 5_000, maxPages = 100)
+            }
+            val historyDeferred = async {
+                withTimeoutOrNull(8_000L) {
+                    YouTube.musicHistory().getOrNull()
+                        ?.sections
+                        .orEmpty()
+                        .flatMap { it.songs }
+                }.orEmpty()
+            }
             val regularDeferred = listOf(
                 "FEmusic_library_songs",
                 "FEmusic_library_corpus_track_songs",
@@ -413,8 +424,47 @@ object MetrolistOnlineBridge {
                 "albums" to (mapped["albums"] ?: emptyList<Map<String, Any?>>()),
                 "artists" to (mapped["artists"] ?: emptyList<Map<String, Any?>>()),
                 "playlists" to (mapped["playlists"] ?: emptyList<Map<String, Any?>>()),
+                "likedSongs" to likedDeferred.await().dedupeItems().map { songMap(it) },
+                "history" to historyDeferred.await().dedupeItems().map { songMap(it) },
             )
         }
+    }
+
+
+    fun createAccountPlaylist(context: Context, title: String): Map<String, Any?> = runBlocking(Dispatchers.IO) {
+        ensureInitialized(context)
+        require(!YouTube.cookie.isNullOrBlank()) { "Conta Google não conectada" }
+        val cleanTitle = title.trim()
+        require(cleanTitle.isNotEmpty()) { "Nome da playlist vazio" }
+        YouTube.useLoginForBrowse = true
+        val playlistId = YouTube.createPlaylist(cleanTitle).trim().removePrefix("VL")
+        require(playlistId.isNotEmpty()) { "YouTube Music não retornou o ID da playlist" }
+        mapOf(
+            "playlistId" to playlistId,
+            "id" to playlistId,
+            "browseId" to "VL$playlistId",
+            "title" to cleanTitle,
+            "author" to "YouTube Music",
+            "thumbnailUrl" to "",
+            "thumbnail" to "",
+            "songCountText" to "0 músicas",
+        )
+    }
+
+    fun addSongToAccountPlaylist(
+        context: Context,
+        playlistId: String,
+        videoId: String,
+    ): Boolean = runBlocking(Dispatchers.IO) {
+        ensureInitialized(context)
+        require(!YouTube.cookie.isNullOrBlank()) { "Conta Google não conectada" }
+        val cleanPlaylistId = playlistId.trim().removePrefix("VL")
+        val cleanVideoId = videoId.trim()
+        require(cleanPlaylistId.isNotEmpty()) { "Playlist inválida" }
+        require(cleanVideoId.isNotEmpty()) { "Música sem videoId do YouTube Music" }
+        YouTube.useLoginForBrowse = true
+        YouTube.addToPlaylist(cleanPlaylistId, cleanVideoId).getOrThrow()
+        true
     }
 
     fun setSongLike(context: Context, videoId: String, liked: Boolean): Boolean =
@@ -1210,7 +1260,73 @@ object MetrolistOnlineBridge {
             }
         }
 
+        // Better Lyrics is the third provider. Its public API accepts artist
+        // + song and may return either an LRC/plain string or a JSON payload.
+        // Keep it strictly after LRCLIB and KuGou so the existing providers
+        // retain priority.
+        val betterLyricsUrl = "https://lyrics-api.boidu.dev/getLyrics?a=${enc(cleanArtist)}&s=${enc(cleanTitle)}"
+        get(betterLyricsUrl)?.let { body ->
+            parseBetterLyrics(body)?.let { better ->
+                return mapOf("lyrics" to better, "source" to "BetterLyrics")
+            }
+        }
+
         return mapOf("lyrics" to "", "source" to "")
+    }
+
+    private fun parseBetterLyrics(body: String): String? {
+        val raw = body.trim()
+        if (raw.isEmpty()) return null
+        if (!raw.startsWith("{") && !raw.startsWith("[")) {
+            return raw.takeIf { it.length > 8 }
+        }
+
+        fun stringLooksLikeLyrics(value: String): Boolean {
+            val v = value.trim()
+            if (v.length < 8) return false
+            return v.contains('\n') || Regex("\\[\\d{1,2}:\\d{2}(?:[.:]\\d+)?]").containsMatchIn(v)
+        }
+
+        fun extract(value: Any?): String? {
+            when (value) {
+                is String -> return value.trim().takeIf(::stringLooksLikeLyrics)
+                is JSONObject -> {
+                    val preferred = listOf(
+                        "lyrics", "syncedLyrics", "lineSyncedLyrics", "lrc",
+                        "musixmatchSyncedLyrics", "musixmatchWordByWordLyrics",
+                        "lrclibSyncedLyrics", "plainLyrics", "lrclibPlainLyrics",
+                        "data",
+                    )
+                    for (key in preferred) {
+                        extract(value.opt(key))?.let { return it }
+                    }
+                    val keys = value.keys()
+                    while (keys.hasNext()) {
+                        extract(value.opt(keys.next()))?.let { return it }
+                    }
+                }
+                is JSONArray -> {
+                    val textLines = mutableListOf<String>()
+                    for (i in 0 until value.length()) {
+                        val item = value.opt(i)
+                        if (item is JSONObject) {
+                            val line = item.optString(
+                                "text",
+                                item.optString("words", item.optString("line", "")),
+                            ).trim()
+                            if (line.isNotEmpty()) textLines += line
+                        }
+                        extract(item)?.let { return it }
+                    }
+                    return textLines.joinToString("\n").takeIf { it.length > 8 }
+                }
+            }
+            return null
+        }
+
+        return runCatching {
+            if (raw.startsWith("{")) extract(JSONObject(raw)) else extract(JSONArray(raw))
+        }.getOrNull()
     }
 
     private fun parseLyricsObject(item: JSONObject): String? {

@@ -821,6 +821,8 @@ class MusicPlayerProvider extends ChangeNotifier {
       final albums = _albumsFromNative(payload['albums']);
       final artists = _artistsFromNative(payload['artists']);
       final playlists = _playlistsFromNative(payload['playlists']);
+      final likedSongs = _tracksFromNative(payload['likedSongs']);
+      final accountHistory = _tracksFromNative(payload['history']);
 
       final mergedSongs = _dedupeTracks(<AudioTrack>[
         ..._onlineAccountLibrarySongs,
@@ -838,15 +840,31 @@ class MusicPlayerProvider extends ChangeNotifier {
         ..._onlineAccountPlaylists,
         ...playlists,
       ]);
+      final mergedLiked = _dedupeTracks(<AudioTrack>[
+        ...likedSongs,
+        ..._onlineAccountLikedSongs,
+      ]);
+      final mergedHistory = _dedupeTracks(<AudioTrack>[
+        ...accountHistory,
+        ..._onlineAccountHistory,
+      ]);
 
       final changed = mergedSongs.length != _onlineAccountLibrarySongs.length ||
           mergedAlbums.length != _onlineAccountAlbums.length ||
           mergedArtists.length != _onlineAccountArtists.length ||
-          mergedPlaylists.length != _onlineAccountPlaylists.length;
+          mergedPlaylists.length != _onlineAccountPlaylists.length ||
+          mergedLiked.length != _onlineAccountLikedSongs.length ||
+          mergedHistory.length != _onlineAccountHistory.length;
       _onlineAccountLibrarySongs = mergedSongs.take(2000).toList(growable: false);
       _onlineAccountAlbums = mergedAlbums.take(2000).toList(growable: false);
       _onlineAccountArtists = mergedArtists.take(2000).toList(growable: false);
       _onlineAccountPlaylists = mergedPlaylists.take(2000).toList(growable: false);
+      _onlineAccountLikedSongs
+        ..clear()
+        ..addAll(mergedLiked.take(5000));
+      _onlineAccountHistory
+        ..clear()
+        ..addAll(mergedHistory.take(2000));
       if (changed) {
         await _persistAccountPersonalizationCache();
         notifyListeners();
@@ -1158,6 +1176,8 @@ class MusicPlayerProvider extends ChangeNotifier {
           ..._onlineRecentTracks,
         ]),
       );
+  List<AudioTrack> get onlineAccountHistorySongs =>
+      List.unmodifiable(_dedupeTracks(_onlineAccountHistory));
   List<AudioTrack> get onlineAccountLikedSongs =>
       List.unmodifiable(_dedupeTracks(_onlineAccountLikedSongs));
   List<AudioTrack> get onlineAccountLibrarySongs =>
@@ -1958,6 +1978,43 @@ class MusicPlayerProvider extends ChangeNotifier {
     _userPlaylists.removeWhere((item) => item.id == playlistId);
     await _persistUserPlaylists();
     notifyListeners();
+  }
+
+  Future<OnlinePlaylist> createAccountPlaylist(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) throw Exception('Informe um nome para a playlist');
+    if (!_isLoggedIn) throw Exception('Conecte sua conta Google primeiro');
+    final payload = await _invokeMetrolistMap(
+      'createAccountPlaylist',
+      <String, dynamic>{'title': trimmed},
+    );
+    final playlist = _playlistFromNative(payload);
+    _onlineAccountPlaylists = _dedupePlaylists(<OnlinePlaylist>[
+      playlist,
+      ..._onlineAccountPlaylists,
+    ]).take(2000).toList(growable: false);
+    notifyListeners();
+    unawaited(_refreshFullAccountLibraryInBackground());
+    return playlist;
+  }
+
+  Future<void> addTrackToAccountPlaylist(String playlistId, AudioTrack track) async {
+    if (!_isLoggedIn) throw Exception('Conecte sua conta Google primeiro');
+    final videoId = (track.videoId ?? (track.isRemote ? track.id : '')).trim();
+    if (videoId.isEmpty) {
+      throw Exception('Esta música não possui um videoId do YouTube Music');
+    }
+    await _scannerChannel.invokeMethod<dynamic>(
+      'addSongToAccountPlaylist',
+      <String, dynamic>{
+        'playlistId': playlistId.replaceFirst(RegExp(r'^VL'), ''),
+        'videoId': videoId,
+      },
+    );
+    _onlinePlaylistPageFutures.remove(
+      playlistId.trim().replaceFirst(RegExp(r'^VL'), ''),
+    );
+    unawaited(_refreshFullAccountLibraryInBackground());
   }
 
   Future<void> addTrackToUserPlaylist(String playlistId, AudioTrack track) async {

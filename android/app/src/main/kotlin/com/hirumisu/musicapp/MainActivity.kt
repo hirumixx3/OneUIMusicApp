@@ -219,6 +219,19 @@ class MainActivity : AudioServiceActivity() {
                             MetrolistOnlineBridge.fetchPersonalizedPlaylists(applicationContext, queries)
                         }
                     }
+                    "createAccountPlaylist" -> {
+                        val title = call.argument<String>("title") ?: ""
+                        runAsync(result, "METROLIST_CREATE_PLAYLIST_ERROR") {
+                            MetrolistOnlineBridge.createAccountPlaylist(applicationContext, title)
+                        }
+                    }
+                    "addSongToAccountPlaylist" -> {
+                        val playlistId = call.argument<String>("playlistId") ?: ""
+                        val videoId = call.argument<String>("videoId") ?: ""
+                        runAsync(result, "METROLIST_ADD_TO_PLAYLIST_ERROR") {
+                            MetrolistOnlineBridge.addSongToAccountPlaylist(applicationContext, playlistId, videoId)
+                        }
+                    }
                     "setSongLike" -> {
                         val videoId = call.argument<String>("videoId") ?: ""
                         val liked = call.argument<Boolean>("liked") ?: true

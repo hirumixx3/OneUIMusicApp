@@ -2029,8 +2029,10 @@ class _OnlineLibraryTab extends StatelessWidget {
           delegate: SliverChildListDelegate([
             _LibraryShortcutCard(
               icon: Icons.thumb_up_rounded,
-              title: 'Música marcada',
-              subtitle: 'Playlist automática',
+              title: 'Músicas marcadas com gostei',
+              subtitle: provider.isLoggedIn
+                  ? '${accountLiked.length} músicas • YouTube Music'
+                  : 'Playlist automática',
               onTap: () {
                 provider.setOnlineSectionIndex(3);
                 onGoHome();
@@ -2047,19 +2049,6 @@ class _OnlineLibraryTab extends StatelessWidget {
             ),
             if (provider.isLoggedIn)
               _LibraryShortcutCard(
-                icon: Icons.favorite_rounded,
-                title: 'Músicas que você curtiu',
-                subtitle: '${accountLiked.length} itens',
-                onTap: () {
-                  if (accountLiked.isNotEmpty) {
-                    _openTrackPlayer(context, accountLiked.first, queue: accountLiked);
-                  } else {
-                    onGoHome();
-                  }
-                },
-              ),
-            if (provider.isLoggedIn)
-              _LibraryShortcutCard(
                 icon: Icons.cloud_done_rounded,
                 title: 'Salvas na conta',
                 subtitle: '${accountLibrary.length} músicas',
@@ -2072,13 +2061,6 @@ class _OnlineLibraryTab extends StatelessWidget {
                 },
               ),
           ]),
-        ),
-        ..._metrolistSongRailSlivers(
-          context: context,
-          title: 'Músicas que você curtiu',
-          subtitle: provider.isLoggedIn ? 'Da sua conta do YouTube Music' : null,
-          songs: accountLiked,
-          take: 18,
         ),
         ..._metrolistSongRailSlivers(
           context: context,
@@ -2936,10 +2918,14 @@ class _OnlineTabState extends State<_OnlineTab>
 
     Widget content;
     if (_sectionIndex == 3) {
-      final favorites = provider.onlineFavoriteTracks;
+      final favorites = provider.isLoggedIn
+          ? provider.onlineAccountLikedSongs
+          : provider.onlineFavoriteTracks;
       content = favorites.isEmpty
-          ? const _EmptyState(
-              message: 'Nenhuma música online favoritada ainda.',
+          ? _EmptyState(
+              message: provider.isLoggedIn
+                  ? 'Nenhuma música marcada com gostei encontrada na sua conta do YouTube Music.'
+                  : 'Nenhuma música online favoritada ainda.',
             )
           : ListView.separated(
               key: const PageStorageKey('online_favorites_list'),
@@ -2960,7 +2946,9 @@ class _OnlineTabState extends State<_OnlineTab>
               },
             );
     } else if (_sectionIndex == 4) {
-      final history = provider.onlineHistoryTracks;
+      final history = provider.isLoggedIn
+          ? provider.onlineAccountHistorySongs
+          : provider.onlineHistoryTracks;
       content = history.isEmpty
           ? const _EmptyState(message: 'Nenhuma música online tocada ainda.')
           : ListView.separated(
@@ -2981,49 +2969,93 @@ class _OnlineTabState extends State<_OnlineTab>
               },
             );
     } else if (_sectionIndex == 5) {
-      final playlists = provider.userPlaylists;
-      content = playlists.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    t.noPlaylistsYet,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  OneUi9GlassButton(
-                    onPressed: () => _showCreatePlaylistDialog(context),
-                    icon: const Icon(Icons.add_rounded),
-                    active: true,
-                    child: Text(t.createPlaylist),
-                  ),
-                ],
-              ),
-            )
-          : ListView.separated(
-              key: const PageStorageKey('user_playlists_list'),
-              controller: _controller,
-              padding: EdgeInsets.only(top: 8, bottom: listBottomPadding),
-              itemCount: playlists.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final playlist = playlists[index];
-                return _UserPlaylistRow(
-                  playlist: playlist,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            UserPlaylistScreen(playlistId: playlist.id),
+      if (provider.isLoggedIn) {
+        final playlists = provider.onlineAccountPlaylists;
+        content = playlists.isEmpty
+            ? const _EmptyState(
+                message: 'Nenhuma playlist encontrada na sua conta do YouTube Music.',
+              )
+            : ListView.separated(
+                key: const PageStorageKey('account_playlists_list'),
+                controller: _controller,
+                padding: EdgeInsets.only(top: 8, bottom: listBottomPadding),
+                itemCount: playlists.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final playlist = playlists[index];
+                  return ListTile(
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SizedBox(
+                        width: 52,
+                        height: 52,
+                        child: _RemoteArtworkBox(
+                          imageUrl: playlist.thumbnailUrl,
+                          radius: 10,
+                        ),
                       ),
-                    );
-                  },
-                  onRename: () => _showRenamePlaylistDialog(context, playlist),
-                  onDelete: () => provider.deleteUserPlaylist(playlist.id),
-                );
-              },
-            );
+                    ),
+                    title: Text(playlist.title),
+                    subtitle: Text(
+                      (playlist.songCountText ?? '').trim().isNotEmpty
+                          ? playlist.songCountText!
+                          : 'YouTube Music',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => OnlinePlaylistScreen(playlist: playlist),
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+      } else {
+        final playlists = provider.userPlaylists;
+        content = playlists.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      t.noPlaylistsYet,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    OneUi9GlassButton(
+                      onPressed: () => _showCreatePlaylistDialog(context),
+                      icon: const Icon(Icons.add_rounded),
+                      active: true,
+                      child: Text(t.createPlaylist),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.separated(
+                key: const PageStorageKey('user_playlists_list'),
+                controller: _controller,
+                padding: EdgeInsets.only(top: 8, bottom: listBottomPadding),
+                itemCount: playlists.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final playlist = playlists[index];
+                  return _UserPlaylistRow(
+                    playlist: playlist,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => UserPlaylistScreen(playlistId: playlist.id),
+                        ),
+                      );
+                    },
+                    onRename: () => _showRenamePlaylistDialog(context, playlist),
+                    onDelete: () => provider.deleteUserPlaylist(playlist.id),
+                  );
+                },
+              );
+      }
     } else if (provider.isOnlineLoading &&
         _sectionIndex != 0 &&
         provider.onlineDisplaySongs.isEmpty &&

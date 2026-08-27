@@ -122,7 +122,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                if (provider.userPlaylists.isEmpty)
+                if (provider.userPlaylists.isEmpty &&
+                    (!provider.isLoggedIn || provider.onlineAccountPlaylists.isEmpty))
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
@@ -134,6 +135,56 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: ListView(
                     shrinkWrap: true,
                     children: [
+                      if (provider.isLoggedIn && provider.onlineAccountPlaylists.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+                          child: Text(
+                            'Playlists da sua conta do YouTube Music',
+                            style: Theme.of(sheetContext).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      for (final playlist in provider.onlineAccountPlaylists)
+                        ListTile(
+                          leading: const Icon(Icons.cloud_done_rounded),
+                          title: Text(playlist.title),
+                          subtitle: Text(
+                            (playlist.songCountText ?? '').trim().isNotEmpty
+                                ? playlist.songCountText!
+                                : 'YouTube Music',
+                          ),
+                          onTap: () async {
+                            try {
+                              await provider.addTrackToAccountPlaylist(
+                                playlist.playlistId,
+                                track,
+                              );
+                              if (!mounted) return;
+                              Navigator.of(sheetContext).pop();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    t.addedToPlaylist(track.title, playlist.title),
+                                  ),
+                                ),
+                              );
+                            } catch (error) {
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(content: Text('Falha ao adicionar no YouTube Music: $error')),
+                              );
+                            }
+                          },
+                        ),
+                      if (provider.isLoggedIn && provider.userPlaylists.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                          child: Text(
+                            'Playlists locais',
+                            style: Theme.of(sheetContext).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
                       for (final playlist in provider.userPlaylists)
                         ListTile(
                           leading: const Icon(Icons.queue_music_rounded),
@@ -171,21 +222,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           final name = (await _promptPlaylistName() ?? '')
                               .trim();
                           if (name.isEmpty) return;
-                          final created = await provider.createUserPlaylist(
-                            name,
-                          );
-                          await provider.addTrackToUserPlaylist(
-                            created.id,
-                            track,
-                          );
-                          if (!mounted) return;
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                t.addedToPlaylist(track.title, created.name),
-                              ),
-                            ),
-                          );
+                          try {
+                            if (provider.isLoggedIn) {
+                              final created = await provider.createAccountPlaylist(name);
+                              await provider.addTrackToAccountPlaylist(
+                                created.playlistId,
+                                track,
+                              );
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    t.addedToPlaylist(track.title, created.title),
+                                  ),
+                                ),
+                              );
+                            } else {
+                              final created = await provider.createUserPlaylist(name);
+                              await provider.addTrackToUserPlaylist(
+                                created.id,
+                                track,
+                              );
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    t.addedToPlaylist(track.title, created.name),
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (error) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(content: Text('Falha ao criar/adicionar playlist: $error')),
+                            );
+                          }
                         },
                       ),
                     ],
