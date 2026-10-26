@@ -38,10 +38,11 @@ class MusicListTile extends StatelessWidget {
         final compact = constraints.maxWidth < 350;
         return OneUi9Glass(
           radius: 25,
-          // A smaller per-row blur avoids stacking costly high-sigma filters while scrolling.
-          blur: 13,
-          clear: true,
-          showShadow: true,
+          // Avoid one BackdropFilter per row: stacked filters stutter on mid-range
+          // phones such as Galaxy A05s. Keep the translucent tint and outline.
+          blur: 0,
+          clear: false,
+          showShadow: false,
           tint: context.oneUiFloatingGlass,
           child: Material(
             color: Colors.transparent,
