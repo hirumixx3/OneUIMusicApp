@@ -22,7 +22,7 @@ import '../models/online_models.dart';
 enum LibraryTab { tracks, albums, artists, favorites, online }
 enum SortMode { launch, alphabetical, artist }
 enum RepeatMode { off, track, album }
-enum AppLanguage { portuguese, english, japanese }
+enum AppLanguage { portuguese, english, japanese, vietnamese }
 enum EqualizerPreset { balanced, bassBoost, soft, dynamic, crisp, trebleBoost, custom }
 
 class _NativeSongsPage {
@@ -1191,6 +1191,8 @@ class MusicPlayerProvider extends ChangeNotifier {
         return const Locale('en');
       case AppLanguage.japanese:
         return const Locale('ja');
+      case AppLanguage.vietnamese:
+        return const Locale('vi');
       case AppLanguage.portuguese:
         return const Locale('pt', 'BR');
     }
@@ -1410,6 +1412,7 @@ class MusicPlayerProvider extends ChangeNotifier {
   AppLanguage _defaultLanguageFromSystem() {
     final code = WidgetsBinding.instance.platformDispatcher.locale.languageCode.toLowerCase();
     if (code.startsWith('ja')) return AppLanguage.japanese;
+    if (code.startsWith('vi')) return AppLanguage.vietnamese;
     if (code.startsWith('en')) return AppLanguage.english;
     return AppLanguage.portuguese;
   }
