@@ -1094,6 +1094,44 @@ class MusicPlayerProvider extends ChangeNotifier {
     return null;
   }
 
+  /// Deletes a local media item after Android confirms the system deletion request.
+  Future<bool> deleteLocalTrack(AudioTrack track) async {
+    if (track.isRemote) {
+      throw ArgumentError('Only local tracks can be deleted from device storage.');
+    }
+    final uri = track.uri.trim();
+    if (!uri.startsWith('content://')) {
+      throw StateError('This track has no deletable Android media URI.');
+    }
+
+    final deleted = await _scannerChannel.invokeMethod<bool>(
+      'deleteAudioTrack',
+      <String, dynamic>{'uri': uri},
+    ) ?? false;
+    if (!deleted) return false;
+
+    final key = track.libraryKey;
+    final wasCurrent = _currentTrack?.libraryKey == key;
+    if (wasCurrent) {
+      await player.stop();
+      _currentTrack = null;
+      _pendingTrack = null;
+      _currentIndex = -1;
+    }
+    _tracks.removeWhere((item) => item.libraryKey == key || item.id == track.id);
+    _queue.removeWhere((item) => item.libraryKey == key || item.id == track.id);
+    _favoriteIds.remove(track.id);
+    await _prefs?.setStringList(_favoritesKey, _favoriteIds.toList());
+    _artworkBytesCache.remove(track.albumGroupKey);
+    _artworkBytesCache.remove(track.libraryKey);
+    _artworkFutureCache.remove(track.albumGroupKey);
+    _artworkFutureCache.remove(track.libraryKey);
+    _resolvedPlayablePathCache.remove(track.libraryKey);
+    await _persistLibraryCache();
+    notifyListeners();
+    return true;
+  }
+
   List<AudioTrack> get tracks => List.unmodifiable(_tracks);
   AudioTrack? get currentTrack => _currentTrack;
   AudioTrack? get pendingTrack => _pendingTrack;
