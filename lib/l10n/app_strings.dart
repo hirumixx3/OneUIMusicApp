@@ -13,12 +13,67 @@ class AppStrings {
 
   bool get _en => languageCode.startsWith('en');
   bool get _ja => languageCode.startsWith('ja');
+  bool get _vi => languageCode.startsWith('vi');
 
   String _pick(String pt, String en, String ja) {
     if (_ja) return ja;
     if (_en) return en;
+    if (_vi) return _vietnamese[pt] ?? pt;
     return pt;
   }
+
+  static const Map<String, String> _vietnamese = {
+    "Buscar músicas...": "Tìm kiếm bài hát...",
+    "Faixas": "Bài hát",
+    "Músicas": "Bài hát",
+    "Álbuns": "Album",
+    "Artistas": "Nghệ sĩ",
+    "Favoritos": "Yêu thích",
+    "Buscas recentes": "Tìm kiếm gần đây",
+    "Limpar": "Xóa",
+    "Histórico": "Lịch sử",
+    "Minhas": "Của tôi",
+    "Criar playlist": "Tạo danh sách phát",
+    "Sobre o app": "Giới thiệu ứng dụng",
+    "Equalizador": "Bộ chỉnh âm",
+    "Ativar equalizador": "Bật bộ chỉnh âm",
+    "Zerar bandas": "Đặt lại các dải âm",
+    "Ativo no áudio deste app": "Đang bật cho âm thanh ứng dụng",
+    "Desativado": "Đã tắt",
+    "Equilibrado": "Cân bằng",
+    "Mais graves": "Tăng âm trầm",
+    "Suave": "Dịu nhẹ",
+    "Dinâmico": "Năng động",
+    "Nítido": "Trong trẻo",
+    "Mais agudos": "Tăng âm cao",
+    "Personalizado": "Tùy chỉnh",
+    "Configurações": "Cài đặt",
+    "Aparência": "Giao diện",
+    "Efeitos de vidro": "Hiệu ứng kính",
+    "Intensidade do blur": "Độ mờ nền",
+    "Intensidade da transparência": "Độ trong suốt",
+    "Idioma": "Ngôn ngữ",
+    "Nova playlist": "Danh sách phát mới",
+    "Renomear playlist": "Đổi tên danh sách phát",
+    "Nome da playlist": "Tên danh sách phát",
+    "Cancelar": "Hủy",
+    "Criar": "Tạo",
+    "Salvar": "Lưu",
+    "Adicionar à playlist": "Thêm vào danh sách phát",
+    "Criar nova playlist": "Tạo danh sách phát mới",
+    "Tocando agora": "Đang phát",
+    "Nenhuma faixa em reprodução.": "Không có bài hát nào đang phát.",
+    "Aleatório": "Phát ngẫu nhiên",
+    "Sem repetição": "Không lặp lại",
+    "Repetir faixa": "Lặp lại bài hát",
+    "Repetir álbum": "Lặp lại album",
+    "Tags da música": "Thẻ bài hát",
+    "Letra": "Lời bài hát",
+    "Fila de reprodução": "Danh sách chờ phát",
+    "Anteriores": "Trước đó",
+    "Próximas": "Tiếp theo",
+    "Falha ao baixar": "Tải xuống thất bại",
+  };
 
   String get appTitle => 'Music';
   String get menu => _pick('Menu', 'Menu', 'メニュー');
@@ -79,6 +134,7 @@ class AppStrings {
   String get portuguese => 'Português';
   String get english => 'English';
   String get japanese => '日本語';
+  String get vietnamese => 'Tiếng Việt';
   String get whatsapp => 'WhatsApp';
   String get telegram => 'Telegram';
   String get telegramContactHint => _pick('Fale comigo pelo Telegram', 'Message me on Telegram', 'Telegramでメッセージを送る');
@@ -178,6 +234,8 @@ class AppStrings {
         return english;
       case AppLanguage.japanese:
         return japanese;
+      case AppLanguage.vietnamese:
+        return vietnamese;
     }
   }
 }
