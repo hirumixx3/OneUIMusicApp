@@ -98,6 +98,7 @@ class _MusicAppState extends State<MusicApp> with WidgetsBindingObserver {
         Locale('pt', 'BR'),
         Locale('en'),
         Locale('ja'),
+        Locale('vi'),
       ],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
