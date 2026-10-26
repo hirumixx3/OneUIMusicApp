@@ -2461,6 +2461,47 @@ class _TracksTabState extends State<_TracksTab>
           isFavorite: provider.isFavorite(track),
           onFavoriteTap: () => provider.toggleFavorite(track),
           onTap: () => _openTrackPlayer(context, track, queue: tracks),
+          onDelete: track.isRemote
+              ? null
+              : () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('Excluir música?'),
+                      content: Text(
+                        '“${track.title}” será excluída do armazenamento do dispositivo. '
+                        'O Android poderá pedir uma confirmação adicional.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          child: const Text('Cancelar'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          child: const Text('Excluir'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true || !context.mounted) return;
+                  try {
+                    final deleted = await provider.deleteLocalTrack(track);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(deleted
+                            ? 'Música excluída.'
+                            : 'A exclusão foi cancelada.'),
+                      ),
+                    );
+                  } catch (error) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Não foi possível excluir: $error')),
+                    );
+                  }
+                },
         );
       },
     );

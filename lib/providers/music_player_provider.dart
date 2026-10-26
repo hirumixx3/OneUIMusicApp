@@ -1094,6 +1094,63 @@ class MusicPlayerProvider extends ChangeNotifier {
     return null;
   }
 
+  /// Deletes a local media item after Android confirms the system deletion request.
+  Future<bool> deleteLocalTrack(AudioTrack track) async {
+    if (track.isRemote) {
+      throw ArgumentError('Only local tracks can be deleted from device storage.');
+    }
+    final uri = track.uri.trim();
+    if (!uri.startsWith('content://')) {
+      throw StateError('This track has no deletable Android media URI.');
+    }
+
+    final deleted = await _scannerChannel.invokeMethod<bool>(
+      'deleteAudioTrack',
+      <String, dynamic>{'uri': uri},
+    ) ?? false;
+    if (!deleted) return false;
+
+    final key = track.libraryKey;
+    // Match the active item by stable ID/URI as well as libraryKey: scanned
+    // metadata can change the libraryKey while the same file is playing.
+    final active = _currentTrack ?? _pendingTrack;
+    final wasCurrent = active != null &&
+        (active.libraryKey == key ||
+            active.id == track.id ||
+            active.uri == track.uri);
+    if (wasCurrent) {
+      // Stop playback immediately after Android confirms deletion, and clear
+      // the queue/current item so the deleted file cannot continue playing.
+      try { await player.stop(); } catch (_) {}
+      try { await _metrolistChannel.invokeMethod<void>('nativeStop'); } catch (_) {}
+      _currentTrack = null;
+      _pendingTrack = null;
+      _currentIndex = -1;
+      _nativeOnlinePlaying = false;
+      _nativeOnlinePlayWhenReady = false;
+      _isPreparingTrack = false;
+      _nativeOnlineState = 'idle';
+    }
+    // Replace the lists instead of mutating them: some scanner/cache paths may
+    // supply fixed-length lists, where removeWhere throws UnsupportedError.
+    _tracks = _tracks
+        .where((item) => item.libraryKey != key && item.id != track.id)
+        .toList(growable: true);
+    _queue = _queue
+        .where((item) => item.libraryKey != key && item.id != track.id)
+        .toList(growable: true);
+    _favoriteIds.remove(track.id);
+    await _prefs?.setStringList(_favoritesKey, _favoriteIds.toList());
+    _artworkBytesCache.remove(track.albumGroupKey);
+    _artworkBytesCache.remove(track.libraryKey);
+    _artworkFutureCache.remove(track.albumGroupKey);
+    _artworkFutureCache.remove(track.libraryKey);
+    _resolvedPlayablePathCache.remove(track.libraryKey);
+    await _persistLibraryCache();
+    notifyListeners();
+    return true;
+  }
+
   List<AudioTrack> get tracks => List.unmodifiable(_tracks);
   AudioTrack? get currentTrack => _currentTrack;
   AudioTrack? get pendingTrack => _pendingTrack;

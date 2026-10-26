@@ -13,6 +13,7 @@ class MusicListTile extends StatelessWidget {
     required this.isFavorite,
     required this.isDark,
     this.leadingLabel,
+    this.onDelete,
   });
 
   final AudioTrack track;
@@ -21,6 +22,7 @@ class MusicListTile extends StatelessWidget {
   final bool isFavorite;
   final bool isDark;
   final String? leadingLabel;
+  final VoidCallback? onDelete;
 
   String _formatDuration(int ms) {
     final d = Duration(milliseconds: ms);
@@ -36,9 +38,11 @@ class MusicListTile extends StatelessWidget {
         final compact = constraints.maxWidth < 350;
         return OneUi9Glass(
           radius: 25,
-          blur: 24,
-          clear: true,
-          showShadow: true,
+          // Avoid one BackdropFilter per row: stacked filters stutter on mid-range
+          // phones such as Galaxy A05s. Keep the translucent tint and outline.
+          blur: 0,
+          clear: false,
+          showShadow: false,
           tint: context.oneUiFloatingGlass,
           child: Material(
             color: Colors.transparent,
@@ -130,6 +134,15 @@ class MusicListTile extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (onDelete != null)
+                      OneUi9IconButton(
+                        tooltip: 'Excluir música do dispositivo',
+                        onPressed: onDelete,
+                        icon: Icons.delete_outline_rounded,
+                        size: compact ? 36 : 40,
+                        iconSize: compact ? 18 : 20,
+                        showShadow: false,
+                      ),
                     OneUi9IconButton(
                       tooltip: isFavorite
                           ? 'Remover dos favoritos'

@@ -2,8 +2,11 @@ package com.hirumisu.musicapp
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -18,7 +21,9 @@ class MainActivity : AudioServiceActivity() {
 
     // Pending MethodChannel result for the Google-login flow
     private var pendingLoginResult: MethodChannel.Result? = null
+    private var pendingDeleteResult: MethodChannel.Result? = null
     private val RC_GOOGLE_LOGIN = 1001
+    private val RC_DELETE_AUDIO = 1002
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -37,6 +42,26 @@ class MainActivity : AudioServiceActivity() {
                     }
                     "getAllAudioFilesJsonFile" -> runAsync(result, "SCAN_FILE_ERROR") {
                         FastAudioScanner.scanToCacheFile(this)
+                    }
+                    "deleteAudioTrack" -> {
+                        val uriString = call.argument<String>("uri") ?: ""
+                        val audioUri = runCatching { Uri.parse(uriString) }.getOrNull()
+                        if (audioUri == null || audioUri.scheme != "content") {
+                            result.error("INVALID_AUDIO_URI", "A URI de mídia não é válida.", null)
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            try {
+                                pendingDeleteResult = result
+                                val request = MediaStore.createDeleteRequest(contentResolver, listOf(audioUri))
+                                startIntentSenderForResult(request.intentSender, RC_DELETE_AUDIO, null, 0, 0, 0)
+                            } catch (e: Exception) {
+                                pendingDeleteResult = null
+                                result.error("DELETE_REQUEST_FAILED", e.message ?: "Não foi possível solicitar a exclusão.", null)
+                            }
+                        } else {
+                            runAsync(result, "DELETE_AUDIO_ERROR") {
+                                contentResolver.delete(audioUri, null, null) > 0
+                            }
+                        }
                     }
                     "getArtworkBase64" -> {
                         val uri     = call.argument<String>("uri")     ?: ""
@@ -377,6 +402,12 @@ class MainActivity : AudioServiceActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == RC_DELETE_AUDIO) {
+            val pending = pendingDeleteResult ?: return
+            pendingDeleteResult = null
+            pending.success(resultCode == Activity.RESULT_OK)
+            return
+        }
         if (requestCode == RC_GOOGLE_LOGIN) {
             val pending = pendingLoginResult ?: return
             pendingLoginResult = null
