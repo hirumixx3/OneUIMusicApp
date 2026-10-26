@@ -1118,8 +1118,14 @@ class MusicPlayerProvider extends ChangeNotifier {
       _pendingTrack = null;
       _currentIndex = -1;
     }
-    _tracks.removeWhere((item) => item.libraryKey == key || item.id == track.id);
-    _queue.removeWhere((item) => item.libraryKey == key || item.id == track.id);
+    // Replace the lists instead of mutating them: some scanner/cache paths may
+    // supply fixed-length lists, where removeWhere throws UnsupportedError.
+    _tracks = _tracks
+        .where((item) => item.libraryKey != key && item.id != track.id)
+        .toList(growable: true);
+    _queue = _queue
+        .where((item) => item.libraryKey != key && item.id != track.id)
+        .toList(growable: true);
     _favoriteIds.remove(track.id);
     await _prefs?.setStringList(_favoritesKey, _favoriteIds.toList());
     _artworkBytesCache.remove(track.albumGroupKey);
