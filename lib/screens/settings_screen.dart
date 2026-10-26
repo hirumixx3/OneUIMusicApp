@@ -32,6 +32,28 @@ class SettingsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(t.language, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<AppLanguage>(
+                    value: provider.appLanguage,
+                    isExpanded: true,
+                    decoration: const InputDecoration(border: OutlineInputBorder()),
+                    items: AppLanguage.values.map((language) => DropdownMenuItem<AppLanguage>(
+                      value: language,
+                      child: Text(t.labelForLanguage(language)),
+                    )).toList(),
+                    onChanged: (language) {
+                      if (language != null) provider.setLanguage(language);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
                     t.appearance,
                     style: Theme.of(context).textTheme.titleLarge
